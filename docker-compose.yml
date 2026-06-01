@@ -1,26 +1,25 @@
 services:
   app:
-   # image: menu_app:latest
     restart: always
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    # Carica automaticamente le variabili d'ambiente dal file .env se presente
+    env_file:
+      - .env
     networks:
       - menu-network
-    depends_on:
-      - db
+    # NOTA: Abbiamo rimosso 'depends_on'. Grazie alla logica di retry in Python,
+    # l'applicazione attenderà che il DB sia pronto in rete in modo autonomo.
 
   db:
     restart: always
     image: mysql:8.0
     environment:
-      # Password per l'utente root (obbligatoria per il container)
       - MYSQL_ROOT_PASSWORD=rootpassword
-      # Creazione del database all'avvio
       - MYSQL_DATABASE=menu_progetto
-      # Creazione dell'utente dedicato
       - MYSQL_USER=menu
       - MYSQL_PASSWORD=menu
     ports:
