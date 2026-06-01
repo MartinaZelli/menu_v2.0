@@ -1,6 +1,5 @@
 import sys
 import time
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
@@ -17,52 +16,43 @@ except ImportError as e:
     print(f"Errore: Non riesco a trovare i moduli. Dettaglio: {e}")
     sys.exit(1)
 
-# --- CONFIGURAZIONE DINAMICA TRAMITE VARIABILI D'AMBIENTE ---
-# Se le variabili d'ambiente non sono configurate nel sistema,
-# l'applicazione userà i vecchi valori di default per retrocompatibilità in locale.
-DB_HOST = os.environ.get("DB_HOST", "db")
-DB_USER = os.environ.get("DB_USER", "menu")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "menu")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_NAME = os.environ.get("DB_NAME", "menu_progetto")
+# --- CONFIGURAZIONE OVERRIDE PER ESECUZIONE DA PC ---
+LOCAL_DATABASE_URL = "mysql+pymysql://menu:menu@db:3306/menu_progetto"
 
-# Ricostruiamo l'URL di connessione di SQLAlchemy in modo dinamico
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
-
-engine_local = create_engine(DATABASE_URL)
+engine_local = create_engine(LOCAL_DATABASE_URL)
 SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
 
 def popola():
-    print(f"Inizializzazione database via {DB_HOST}...")
+    print("Inizializzazione database via Localhost...")
 
     db_connesso = False
     for i in range(10):
         try:
             with engine_local.connect() as connection:
-                print("Connessione stabilita con successo!")
+                print("Connessione stabilita.")
                 db_connesso = True
                 break
-        except Exception as e:
-            print(f"Tentativo {i+1}/10: DB su {DB_HOST} non pronto, attesa... (Errore: {e})")
+        except Exception:
+            print(f"Tentativo {i+1}: DB non pronto, attesa...")
             time.sleep(5)
 
     if not db_connesso:
-        print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
         sys.exit(1)
 
     # 1. CANCELLAZIONE TOTALE
+    # Questo elimina fisicamente tutte le tabelle definite in 'Base' dal database
     print("Eliminazione di tutte le tabelle esistenti...")
     Base.metadata.drop_all(bind=engine_local)
 
     # 2. RICREAZIONE SCHEMA
+    # Crea nuovamente le tabelle vuote basandosi sui modelli SQLAlchemy
     print("Ricreazione schema database...")
     Base.metadata.create_all(bind=engine_local)
 
     db = SessionOverride()
 
     try:
+
         # --- 2. IMPORTA MACRO ---
         print("Importazione frequenze macro...")
         frequenze = [
@@ -119,6 +109,7 @@ def popola():
             PiattoDB(nome="Baccalà alla livornese", tempo=40, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
             PiattoDB(nome="Branzino al sale", tempo=35, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
             PiattoDB(nome="Cous cous di pesce", tempo=30, adatto_al_lavoro=True, proteina=Proteina.PESCE.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.ESTATE.value),
+            # CORREZIONE QUI: Tipologia.SECONDO invece di Tipologia.MEZZA
             PiattoDB(nome="Sogliola alla mugnaia", tempo=10, adatto_al_lavoro=True, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.MEZZA.value),
             PiattoDB(nome="Zuppa di pesce", tempo=50, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.INVERNO.value),
             PiattoDB(nome="Filetto di orata al forno", tempo=20, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),

@@ -3,18 +3,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignK
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
-# --- CONFIGURAZIONE DINAMICA TRAMITE VARIABILI D'AMBIENTE ---
-# Se le variabili d'ambiente non sono presenti nel sistema (es. quando esegui in locale),
-# verranno utilizzati i valori di default preesistenti ("db", "menu", "menu", "menu_progetto").
-DB_HOST = os.environ.get("DB_HOST", "db")
-DB_USER = os.environ.get("DB_USER", "menu")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "menu")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_NAME = os.environ.get("DB_NAME", "menu_progetto")
-
-# Costruzione dinamica dell'URL di connessione per SQLAlchemy
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
+# Configurazione diretta per MySQL (User: menu, Pass: menu, Host: db)
+DATABASE_URL = "mysql+pymysql://menu:menu@db/menu_progetto"
 Base = declarative_base()
 
 # --- TABELLA MACRO ---
@@ -22,7 +12,7 @@ class MacroDB(Base):
     __tablename__ = "macro"
     id = Column(Integer, primary_key=True, index=True)
     # MySQL richiede una lunghezza per le colonne UNIQUE
-    proteina = Column(String(50), unique=True)
+    proteina = Column(String(50), unique=True) 
     frequenza = Column(Integer)
 
 # --- TABELLA PIATTO ---
@@ -48,15 +38,15 @@ class PastoSalvatoDB(Base):
     __tablename__ = "pasti_salvati"
     id = Column(Integer, primary_key=True, index=True)
     settimana_id = Column(Integer, ForeignKey("settimane.id"))
-    giorno = Column(String(20))
+    giorno = Column(String(20)) 
     momento = Column(String(20))
     piatto_id = Column(Integer, ForeignKey("piatti.id"))
     nome_manuale = Column(String(255), nullable=True)
-
+    
     settimana = relationship("SettimanaDB", back_populates="pasti")
     piatto = relationship("PiattoDB")
 
-# Setup finale dell'engine con l'URL dinamico
+# Setup finale
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
