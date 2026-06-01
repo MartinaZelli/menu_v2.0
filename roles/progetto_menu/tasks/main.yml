@@ -1,8 +1,0 @@
----
-- name: "Includi task del sistema"
-  ansible.builtin.include_tasks:
-    file: sistema.yml
-
-- name: "Includi task del progetto"
-  ansible.builtin.include_tasks:
-    file: progetto.yml

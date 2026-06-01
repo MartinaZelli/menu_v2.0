@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestione Piatti</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #2c3e50; color: white; }
+        .form-piatto { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 30px; padding: 15px; border: 1px solid #eee; }
+        .btn-add { background: #27ae60; color: white; border: none; padding: 10px; cursor: pointer; }
+        .btn-del { background: #e74c3c; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <nav style="background: #2c3e50; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+        <a href="index.html" style="color: white; margin-right: 20px; text-decoration: none;">🏠 Generatore Menu</a>
+        <a href="piatti.html" style="color: white; text-decoration: none; font-weight: bold;">🍲 Gestione Piatti</a>
+    </nav>
+
+    <div class="container">
+        <h2>➕ Aggiungi Nuovo Piatto</h2>
+        <div class="form-piatto">
+            <input type="text" id="nome" placeholder="Nome Piatto">
+            <select id="proteina">
+                <option value="pesce">Pesce</option><option value="carne bianca">Carne Bianca</option>
+                <option value="carne rossa">Carne Rossa</option><option value="legumi">Legumi</option>
+                <option value="uova">Uova</option><option value="latticini">Latticini</option>
+            </select>
+            <select id="stagione">
+                <option value="generico">Generico</option><option value="estate">Estate</option><option value="inverno">Inverno</option>
+            </select>
+            <input type="number" id="tempo" placeholder="Minuti">
+            <label><input type="checkbox" id="lavoro"> Per Lavoro</label>
+            <button class="btn-add" onclick="aggiungiPiatto()">Salva Piatto</button>
+        </div>
+
+        <h2>📋 Elenco Piatti nel Database</h2>
+        <table id="tabella-piatti">
+            <thead>
+                <tr><th>Nome</th><th>Proteina</th><th>Tempo</th><th>Azioni</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+        async function caricaPiatti() {
+            const res = await fetch('http://127.0.0.1:8000/menu/elenco-piatti');
+            const piatti = await res.json();
+            const tbody = document.querySelector('#tabella-piatti tbody');
+            tbody.innerHTML = piatti.map(p => `
+                <tr>
+                    <td>${p.nome}</td>
+                    <td>${p.proteina}</td>
+                    <td>${p.tempo} min</td>
+                    <td><button class="btn-del" onclick="eliminaPiatto(${p.id})">Elimina</button></td>
+                </tr>
+            `).join('');
+        }
+
+       async function aggiungiPiatto() {
+    const nome = document.getElementById('nome').value;
+    const tempo = document.getElementById('tempo').value;
+
+    if (!nome || !tempo) {
+        alert("Per favore, inserisci nome e tempo di preparazione");
+        return;
+    }
+
+    const nuovo = {
+        id: 0, // Inseriamo un ID zero: FastAPI lo valida, il DB lo sovrascrive
+        nome: nome,
+        proteina: document.getElementById('proteina').value,
+        stagione: document.getElementById('stagione').value,
+        tempo: parseInt(tempo),
+        adatto_al_lavoro: document.getElementById('lavoro').checked,
+        tipologia: "primo" // Assicurati che 'primo' sia un valore valido nel tuo Enum Tipologia
+    };
+
+    console.log("Invio dati:", nuovo); // Controlla nella console di F12 cosa viene inviato
+
+    const res = await fetch('http://127.0.0.1:8000/menu/aggiungi-piatto', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(nuovo)
+    });
+
+    if (res.ok) {
+        // Pulisce i campi dopo il successo
+        document.getElementById('nome').value = "";
+        document.getElementById('tempo').value = "";
+        caricaPiatti();
+    } else {
+        const errore = await res.json();
+        console.error("Errore validazione:", errore);
+        alert("Errore durante il salvataggio: controlla i dati inseriti.");
+    }
+}
+
+        async function eliminaPiatto(id) {
+            if(confirm("Sicuro di voler eliminare questo piatto?")) {
+                await fetch(`http://127.0.0.1:8000/menu/elimina-piatto/${id}`, { method: 'DELETE' });
+                caricaPiatti();
+            }
+        }
+
+        caricaPiatti();
+    </script>
+</body>
+</html>
