@@ -17,7 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    cmd: python3 popola_db/popola_db.py
+    command: python3 popola_db/popola_db.py
     env_file:
       - .env
     networks:
