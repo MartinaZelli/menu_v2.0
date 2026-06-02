@@ -13,7 +13,16 @@ services:
       - menu-network
     # NOTA: Abbiamo rimosso 'depends_on'. Grazie alla logica di retry in Python,
     # l'applicazione attenderà che il DB sia pronto in rete in modo autonomo.
-
+  popola-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cmd: python3 popola_db/popola_db.py
+    env_file:
+      - .env
+    networks:
+      - menu-network
+    # Questo container non deve avere 'restart: always' altrimenti popolerà il DB all'infinito!
   db:
     restart: always
     image: mysql:8.0

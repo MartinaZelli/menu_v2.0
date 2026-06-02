@@ -16,5 +16,5 @@ ADD main.py /app
 RUN mkdir /app/popola_db
 ADD popola_db.py /app/popola_db
 WORKDIR /app
-CMD python3 popola_db/popola_db.py && python3 main.py
+CMD python3, main.py
 
