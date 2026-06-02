@@ -48,7 +48,7 @@
 
     <script>
         async function caricaPiatti() {
-            const res = await fetch('http://127.0.0.1:8000/menu/elenco-piatti');
+            const res = await fetch('/menu/elenco-piatti');
             const piatti = await res.json();
             const tbody = document.querySelector('#tabella-piatti tbody');
             tbody.innerHTML = piatti.map(p => `
@@ -82,7 +82,7 @@
 
     console.log("Invio dati:", nuovo); // Controlla nella console di F12 cosa viene inviato
 
-    const res = await fetch('http://127.0.0.1:8000/menu/aggiungi-piatto', {
+    const res = await fetch('/menu/aggiungi-piatto', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(nuovo)
@@ -102,7 +102,7 @@
 
         async function eliminaPiatto(id) {
             if(confirm("Sicuro di voler eliminare questo piatto?")) {
-                await fetch(`http://127.0.0.1:8000/menu/elimina-piatto/${id}`, { method: 'DELETE' });
+                await fetch(`/menu/elimina-piatto/${id}`, { method: 'DELETE' });
                 caricaPiatti();
             }
         }

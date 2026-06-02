@@ -375,7 +375,7 @@ function apriEditor(giorno, momento) {
     };
 
     try {
-        const res = await fetch('http://127.0.0.1:8000/menu', {
+        const res = await fetch('/menu', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(corpo)
@@ -406,7 +406,7 @@ function apriEditor(giorno, momento) {
     };
 
     try {
-        const res = await fetch('http://127.0.0.1:8000/menu/salva', {
+        const res = await fetch('/menu/salva', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(menuDaSalvare)
