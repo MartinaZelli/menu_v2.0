@@ -6,13 +6,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${HOST_IP}:8000:8000"
-    # Carica automaticamente le variabili d'ambiente dal file .env se presente
     env_file:
       - .env
     networks:
       - menu-network
-    # NOTA: Abbiamo rimosso 'depends_on'. Grazie alla logica di retry in Python,
-    # l'applicazione attenderà che il DB sia pronto in rete in modo autonomo.
+
   popola-db:
     build:
       context: .
@@ -20,19 +18,6 @@ services:
     command: python3 popola_db/popola_db.py
     env_file:
       - .env
-    networks:
-      - menu-network
-    # Questo container non deve avere 'restart: always' altrimenti popolerà il DB all'infinito!
-  db:
-    restart: always
-    image: mysql:8.0
-    environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_DATABASE=menu_progetto
-      - MYSQL_USER=menu
-      - MYSQL_PASSWORD=menu
-    ports:
-      - "3306:3306"
     networks:
       - menu-network
 
