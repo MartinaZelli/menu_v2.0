@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
 
+from src.database import PastoSalvatoDB
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
@@ -31,16 +33,16 @@ DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB
 
 print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
 
-engine_local = create_engine(DATABASE_URL)
-SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
+#engine_local = create_engine(DATABASE_URL)
+#SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
 
-def popola():
+def test_connessione_db():
     print(f"Inizializzazione database via {DB_HOST}...")
 
     db_connesso = False
     for i in range(10):
         try:
-            with engine_local.connect() as connection:
+            with engine.connect() as connection:
                 print("Connessione stabilita con successo!")
                 db_connesso = True
                 break
@@ -52,96 +54,132 @@ def popola():
         print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
         sys.exit(1)
 
-    # 1. CANCELLAZIONE TOTALE
-    print("Eliminazione di tutte le tabelle esistenti...")
-    Base.metadata.drop_all(bind=engine_local)
+def popola_db():
+    engine = create_engine(DATABASE_URL)
 
-    # 2. RICREAZIONE SCHEMA
-    print("Ricreazione schema database...")
-    Base.metadata.create_all(bind=engine_local)
+    if not test_connessione_db(engine):
+        print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
+        sys.exit(1)
 
-    db = SessionOverride()
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
-    try:
-        # --- 2. IMPORTA MACRO ---
-        print("Importazione frequenze macro...")
-        frequenze = [
-            MacroDB(proteina=Proteina.LEGUMI.value, frequenza=3),
-            MacroDB(proteina=Proteina.LATTICINI.value, frequenza=4),
-            MacroDB(proteina=Proteina.CARNE_BIANCA.value, frequenza=4),
-            MacroDB(proteina=Proteina.CARNE_ROSSA.value, frequenza=1),
-            MacroDB(proteina=Proteina.PESCE.value, frequenza=3),
-            MacroDB(proteina=Proteina.UOVA.value, frequenza=3),
-        ]
-        db.add_all(frequenze)
-
-        # --- 3. IMPORTA PIATTI ---
-        print("Importazione ricettario...")
-        lista_piatti = [
-            # LATTICINI
-            PiattoDB(nome="Pasta al pomodoro e mozzarella", tempo=30, adatto_al_lavoro=False, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Tomino alla piastra", tempo=5, adatto_al_lavoro=True, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Insalata greca", tempo=10, adatto_al_lavoro=True, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Gnocchi al gorgonzola", tempo=15, adatto_al_lavoro=False, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Pasta fredda tricolore", tempo=20, adatto_al_lavoro=True, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Ricotta fresca e mieie", tempo=5, adatto_al_lavoro=True, proteina=Proteina.LATTICINI.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.ESTATE.value),
+    macro_desiderate = [
+        {"proteina": Proteina.LEGUMI.value, "frequenza": 3},
+        {"proteina": Proteina.LATTICINI.value, "frequenza": 4},
+        {"proteina": Proteina.CARNE_BIANCA.value, "frequenza": 4},
+        {"proteina": Proteina.CARNE_ROSSA.value, "frequenza": 1},
+        {"proteina": Proteina.PESCE.value, "frequenza": 3},
+        {"proteina": Proteina.UOVA.value, "frequenza": 3},
+    ]
+    piatti_desiderati = [
+          # LATTICINI
+            {"nome": "Pasta al pomodoro e mozzarella", "tempo": 30, "adatto_al_lavoro": False, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Tomino alla piastra", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Insalata greca", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Gnocchi al gorgonzola", "tempo": 15, "adatto_al_lavoro": False, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Pasta fredda tricolore", "tempo": 20, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Ricotta fresca e mieie", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.ESTATE.value},
 
             # LEGUMI
-            PiattoDB(nome="Minestrone di verdure", tempo=40, adatto_al_lavoro=False, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Insalata di ceci e tonno", tempo=10, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Lenticchie in umido", tempo=45, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Polpette di soia", tempo=20, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Quinoa con verdure", tempo=25, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Fagioli all'uccelletto", tempo=30, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.CONTORNO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Hummus con cruditè", tempo=15, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Zuppa di farro e lenticchie", tempo=40, adatto_al_lavoro=True, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Zuppa di piselli freschi", tempo=30, adatto_al_lavoro=False, proteina=Proteina.LEGUMI.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.MEZZA.value),
+            {"nome": "Minestrone di verdure", "tempo": 40, "adatto_al_lavoro": False, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Insalata di ceci e tonno", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Lenticchie in umido", "tempo": 45, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Polpette di soia", "tempo": 20, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Quinoa con verdure", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Fagioli all'uccelletto", "tempo": 30, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.CONTORNO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Hummus con cruditè", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Zuppa di farro e lenticchie", "tempo": 40, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Zuppa di piselli freschi", "tempo": 30, "adatto_al_lavoro": False, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.MEZZA.value},
 
             # CARNE BIANCA
-            PiattoDB(nome="Hamburger di pollo", tempo=10, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Spiedini di tacchino", tempo=15, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Scaloppine al limone", tempo=15, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Insalata di pollo e mele", tempo=15, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Pollo al curry", tempo=25, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Tacchino alle erbe", tempo=15, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.MEZZA.value),
-            PiattoDB(nome="Bocconcini di pollo ai funghi", tempo=20, adatto_al_lavoro=True, proteina=Proteina.CARNE_BIANCA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.INVERNO.value),
+            {"nome": "Hamburger di pollo", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Spiedini di tacchino", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Scaloppine al limone", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Insalata di pollo e mele", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Pollo al curry", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Tacchino alle erbe", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
+            {"nome": "Bocconcini di pollo ai funghi", "tempo": 20, "adatto_al_lavoro": True,"proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
 
             # CARNE ROSSA
-            PiattoDB(nome="Spezzatino di manzo", tempo=90, adatto_al_lavoro=False, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Straccetti di vitello", tempo=10, adatto_al_lavoro=True, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Bistecca ai ferri", tempo=8, adatto_al_lavoro=False, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Polpette al sugo", tempo=35, adatto_al_lavoro=False, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Carpaccio di bresaola", tempo=5, adatto_al_lavoro=True, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Tagliata di manzo e rucola", tempo=12, adatto_al_lavoro=False, proteina=Proteina.CARNE_ROSSA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.MEZZA.value),
+            {"nome": "Spezzatino di manzo", "tempo": 90, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Straccetti di vitello", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Bistecca ai ferri", "tempo": 8, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Polpette al sugo", "tempo": 35, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Carpaccio di bresaola", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Tagliata di manzo e rucola", "tempo": 12, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
 
             # PESCE
-            PiattoDB(nome="Salmone al vapore", tempo=15, adatto_al_lavoro=True, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Baccalà alla livornese", tempo=40, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Branzino al sale", tempo=35, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Cous cous di pesce", tempo=30, adatto_al_lavoro=True, proteina=Proteina.PESCE.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.ESTATE.value),
-            PiattoDB(nome="Sogliola alla mugnaia", tempo=10, adatto_al_lavoro=True, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.MEZZA.value),
-            PiattoDB(nome="Zuppa di pesce", tempo=50, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.UNICO.value, stagione=Stagione.INVERNO.value),
-            PiattoDB(nome="Filetto di orata al forno", tempo=20, adatto_al_lavoro=False, proteina=Proteina.PESCE.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
+            {"nome": "Salmone al vapore", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Baccalà alla livornese", "tempo": 40, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Branzino al sale", "tempo": 35, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Cous cous di pesce", "tempo": 30, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
+            {"nome": "Sogliola alla mugnaia", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
+            {"nome": "Zuppa di pesce", "tempo": 50, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.INVERNO.value},
+            {"nome": "Filetto di orata al forno", "tempo": 20, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
 
             # UOVA
-            PiattoDB(nome="Frittata alle erbe", tempo=15, adatto_al_lavoro=True, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Pasta alla carbonara", tempo=20, adatto_al_lavoro=False, proteina=Proteina.UOVA.value, tipologia=Tipologia.PRIMO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Uova in purgatorio", tempo=15, adatto_al_lavoro=False, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Omelette al formaggio", tempo=10, adatto_al_lavoro=False, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Uova sode e asparagi", tempo=15, adatto_al_lavoro=True, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.MEZZA.value),
-            PiattoDB(nome="Frittata al forno con verdure", tempo=25, adatto_al_lavoro=True, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
-            PiattoDB(nome="Uova alla coque con crostini", tempo=8, adatto_al_lavoro=False, proteina=Proteina.UOVA.value, tipologia=Tipologia.SECONDO.value, stagione=Stagione.GENERICO.value),
+            {"nome": "Frittata alle erbe", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Pasta alla carbonara", "tempo": 20, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Uova in purgatorio", "tempo": 15, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Omelette al formaggio", "tempo": 10, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Uova sode e asparagi", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
+            {"nome": "Frittata al forno con verdure", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
+            {"nome": "Uova alla coque con crostini", "tempo": 8, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
         ]
 
-        db.add_all(lista_piatti)
-        db.commit()
-        print(f"Completato! Caricati {len(lista_piatti)} piatti.")
+    try:
+        # 0. PULIZIA TOTALE DEI MENU SALVATI
+        # Se vuoi svuotare completamente lo storico dei menu ogni volta che rilanci il popolamento:
+        num_deleted = session.query(PastoSalvatoDB).delete()
+        if num_deleted > 0:
+            print(f"Storico menu salvati ({num_deleted} record) rimosso.")
 
+        # 1. Sincronizzazione Macro
+        macro_db = session.query(MacroDB).all()
+        nomi_macro_db = {m.proteina: m for m in macro_db}
+
+        for m_data in macro_desiderate:
+            if m_data["proteina"] in nomi_macro_db:
+                nomi_macro_db[m_data["proteina"]].frequenza = m_data["frequenza"]
+            else:
+                session.add(MacroDB(**m_data))
+
+        # Carica piatti esistenti
+        piatti_db = session.query(PiattoDB).all()
+        nomi_db = {p.nome: p for p in piatti_db}
+        nomi_desiderati = [p["nome"] for p in piatti_desiderati]
+
+        # 1. Eliminazione piatti non più presenti
+        for nome, piatto_obj in nomi_db.items():
+            if nome not in nomi_desiderati:
+                print(f"Eliminazione piatto obsoleto: {nome}")
+                session.delete(piatto_obj)
+
+        # 2. Inserimento/Aggiornamento
+        for p_data in piatti_desiderati:
+            if p_data["nome"] in nomi_db:
+                # Aggiornamento
+                p_db = nomi_db[p_data["nome"]]
+                p_db.tempo = p_data["tempo"]
+                p_db.adatto_al_lavoro = p_data["adatto_al_lavoro"]
+                p_db.proteina = p_data["proteina"]
+                p_db.tipologia = p_data["tipologia"]
+                p_db.stagione = p_data["stagione"]
+            else:
+                # Inserimento
+                print(f"Aggiunta nuovo piatto: {p_data['nome']}")
+                session.add(PiattoDB(**p_data))
+
+
+        session.commit()
+        print("Sincronizzazione database completata.")
     except Exception as e:
+        session.rollback()
         print(f"Errore durante il popolamento: {e}")
-        db.rollback()
     finally:
-        db.close()
+        session.close()
 
 if __name__ == "__main__":
-    popola()
+    popola_db()
