@@ -33,16 +33,16 @@ DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB
 
 print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
 
-#engine_local = create_engine(DATABASE_URL)
-#SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
+engine_local = create_engine(DATABASE_URL)
+SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
 
-def test_connessione_db(engine):
+def test_connessione_db(engine_local):
     print(f"Inizializzazione database via {DB_HOST}...")
 
     db_connesso = False
     for i in range(10):
         try:
-            with engine.connect() as connection:
+            with engine_local.connect() as connection:
                 print("Connessione stabilita con successo!")
                 db_connesso = True
                 break
@@ -57,7 +57,7 @@ def test_connessione_db(engine):
 def popola_db():
     engine = create_engine(DATABASE_URL)
 
-    if not test_connessione_db(engine):
+    if not test_connessione_db(engine_local):
         print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
         sys.exit(1)
 
