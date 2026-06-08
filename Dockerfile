@@ -15,6 +15,7 @@ ADD static /app/static
 ADD main.py /app
 RUN mkdir /app/popola_db
 ADD popola_db.py /app/popola_db
+ADD data_piatti.py /app/popola_db
 WORKDIR /app
 CMD ["python3", "main.py"]
 

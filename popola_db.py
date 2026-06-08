@@ -7,6 +7,10 @@ from pathlib import Path
 from data_piatti import PIATTI_DATA
 from src.database import PastoSalvatoDB
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 try:
     # Importiamo le classi e le enumerazioni dai file del progetto
     from src.database import Base, PiattoDB, MacroDB
