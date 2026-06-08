@@ -1,7 +1,7 @@
 import sys
 import time
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
 from data_piatti import PIATTI_DATA
@@ -36,28 +36,27 @@ print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
 engine_local = create_engine(DATABASE_URL)
 SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
 
-def test_connessione_db(engine_local):
+def test_connessione_db(engine):
     print(f"Inizializzazione database via {DB_HOST}...")
 
-    db_connesso = False
     for i in range(10):
         try:
-            with engine_local.connect() as connection:
+            with engine.connect() as connection:
+                # Eseguiamo una query di test per verificare la reale operatività
+                connection.execute(text("SELECT 1"))
                 print("Connessione stabilita con successo!")
-                db_connesso = True
-                break
+                return True # Successo: usciamo dalla funzione
         except Exception as e:
-            print(f"Tentativo {i+1}/10: DB su {DB_HOST} non pronto, attesa... (Errore: {e})")
+            print(f"Tentativo {i+1}/10: DB su {DB_HOST} non pronto... (Errore: {e})")
             time.sleep(5)
 
-    if not db_connesso:
-        print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
-        sys.exit(1)
+    return False # Fallito dopo 10 tentativi
 
 def popola_db():
     engine = create_engine(DATABASE_URL)
 
-    if not test_connessione_db(engine_local):
+    # Passiamo l'engine appena creato
+    if not test_connessione_db(engine):
         print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
         sys.exit(1)
 
