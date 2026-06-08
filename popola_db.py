@@ -4,7 +4,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pathlib import Path
-
+from data_piatti import PIATTI_DATA
 from src.database import PastoSalvatoDB
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -73,61 +73,7 @@ def popola_db():
         {"proteina": Proteina.PESCE.value, "frequenza": 3},
         {"proteina": Proteina.UOVA.value, "frequenza": 3},
     ]
-    piatti_desiderati = [
-          # LATTICINI
-            {"nome": "Pasta al pomodoro e mozzarella", "tempo": 30, "adatto_al_lavoro": False, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Tomino alla piastra", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Insalata greca", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Gnocchi al gorgonzola", "tempo": 15, "adatto_al_lavoro": False, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Pasta fredda tricolore", "tempo": 20, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Ricotta fresca e mieie", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.LATTICINI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.ESTATE.value},
-
-            # LEGUMI
-            {"nome": "Minestrone di verdure", "tempo": 40, "adatto_al_lavoro": False, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Insalata di ceci e tonno", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Lenticchie in umido", "tempo": 45, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Polpette di soia", "tempo": 20, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Quinoa con verdure", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Fagioli all'uccelletto", "tempo": 30, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.CONTORNO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Hummus con cruditè", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Zuppa di farro e lenticchie", "tempo": 40, "adatto_al_lavoro": True, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Zuppa di piselli freschi", "tempo": 30, "adatto_al_lavoro": False, "proteina": Proteina.LEGUMI.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.MEZZA.value},
-
-            # CARNE BIANCA
-            {"nome": "Hamburger di pollo", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Spiedini di tacchino", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Scaloppine al limone", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Insalata di pollo e mele", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Pollo al curry", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Tacchino alle erbe", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
-            {"nome": "Bocconcini di pollo ai funghi", "tempo": 20, "adatto_al_lavoro": True,"proteina": Proteina.CARNE_BIANCA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
-
-            # CARNE ROSSA
-            {"nome": "Spezzatino di manzo", "tempo": 90, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Straccetti di vitello", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Bistecca ai ferri", "tempo": 8, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Polpette al sugo", "tempo": 35, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Carpaccio di bresaola", "tempo": 5, "adatto_al_lavoro": True, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Tagliata di manzo e rucola", "tempo": 12, "adatto_al_lavoro": False, "proteina": Proteina.CARNE_ROSSA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
-
-            # PESCE
-            {"nome": "Salmone al vapore", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Baccalà alla livornese", "tempo": 40, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Branzino al sale", "tempo": 35, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Cous cous di pesce", "tempo": 30, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.ESTATE.value},
-            {"nome": "Sogliola alla mugnaia", "tempo": 10, "adatto_al_lavoro": True, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
-            {"nome": "Zuppa di pesce", "tempo": 50, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.UNICO.value, "stagione": Stagione.INVERNO.value},
-            {"nome": "Filetto di orata al forno", "tempo": 20, "adatto_al_lavoro": False, "proteina": Proteina.PESCE.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-
-            # UOVA
-            {"nome": "Frittata alle erbe", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Pasta alla carbonara", "tempo": 20, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.PRIMO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Uova in purgatorio", "tempo": 15, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Omelette al formaggio", "tempo": 10, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Uova sode e asparagi", "tempo": 15, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.MEZZA.value},
-            {"nome": "Frittata al forno con verdure", "tempo": 25, "adatto_al_lavoro": True, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-            {"nome": "Uova alla coque con crostini", "tempo": 8, "adatto_al_lavoro": False, "proteina": Proteina.UOVA.value, "tipologia": Tipologia.SECONDO.value, "stagione": Stagione.GENERICO.value},
-        ]
+    piatti_desiderati = PIATTI_DATA
 
     try:
         # 0. PULIZIA TOTALE DEI MENU SALVATI
