@@ -36,7 +36,7 @@ print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
 #engine_local = create_engine(DATABASE_URL)
 #SessionOverride = sessionmaker(autocommit=False, autoflush=False, bind=engine_local)
 
-def test_connessione_db():
+def test_connessione_db(engine):
     print(f"Inizializzazione database via {DB_HOST}...")
 
     db_connesso = False
