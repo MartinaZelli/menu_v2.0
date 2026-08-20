@@ -17,5 +17,8 @@ RUN mkdir /app/popola_db
 ADD popola_db.py /app/popola_db
 ADD data_piatti.py /app/popola_db
 WORKDIR /app
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.source="https://github.com/MartinaZelli/menu_v2.0"
+LABEL org.opencontainers.image.description="Gestione Menù v2 — FastAPI + MySQL"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
 CMD ["python3", "main.py"]
-
