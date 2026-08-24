@@ -1,21 +1,9 @@
-import os
-from typing import Iterator
+from collections.abc import Iterator
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Date
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker, relationship
+from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, create_engine
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
-# --- CONFIGURAZIONE DINAMICA TRAMITE VARIABILI D'AMBIENTE ---
-# Se le variabili d'ambiente non sono presenti nel sistema (es. quando esegui in locale),
-# verranno utilizzati i valori di default preesistenti ("db", "menu", "menu", "menu_progetto").
-DB_HOST = os.environ.get("DB_HOST", "db")
-DB_USER = os.environ.get("DB_USER", "menu")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "menu")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_NAME = os.environ.get("DB_NAME", "menu_progetto")
-
-# Costruzione dinamica dell'URL di connessione per SQLAlchemy
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+from src.config import DATABASE_URL
 
 Base = declarative_base()
 
@@ -58,8 +46,23 @@ class PastoSalvatoDB(Base):
     settimana = relationship("SettimanaDB", back_populates="pasti")
     piatto = relationship("PiattoDB")
 
-# Setup finale dell'engine con l'URL dinamico
-engine = create_engine(DATABASE_URL)
+# Setup finale dell'engine con l'URL dinamico.
+#
+# pool_pre_ping: prima di riusare una connessione dal pool, SQLAlchemy manda un
+#   ping. MySQL chiude le connessioni inattive dopo wait_timeout (default 8 ore),
+#   quindi senza questo un contenitore fermo tutta la notte risponde
+#   "MySQL server has gone away" alla prima richiesta del mattino.
+# pool_recycle: ricicla le connessioni piu' vecchie di un'ora, prima che sia il
+#   server a chiuderle.
+# connect_timeout: senza un limite esplicito, un database irraggiungibile tiene
+#   appesa la richiesta per la durata del timeout di sistema. Serve soprattutto
+#   all'endpoint di readiness, che deve dare una risposta rapida.
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={"connect_timeout": 3},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

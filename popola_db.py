@@ -1,6 +1,5 @@
 import sys
 import time
-import os
 from typing import Any, Dict, List
 
 from sqlalchemy import create_engine, text
@@ -14,24 +13,13 @@ try:
     # Nei due laboratori il PYTHONPATH=/app e' proprio cio' che li fa
     # funzionare, dato che lo script viene eseguito da /app/popola_db/.
     from data_piatti import PIATTI_DATA
-    from src.database import Base, PiattoDB, MacroDB, PastoSalvatoDB
+    from src.config import CONFIG, DATABASE_URL, stampa_diagnostica, verifica_o_esci
+    from src.database import Base, MacroDB, PastoSalvatoDB, PiattoDB
     from src.enums import Proteina
 except ImportError as e:
     print(f"Errore: Non riesco a trovare i moduli. Dettaglio: {e}")
     print("Suggerimento: esegui con PYTHONPATH puntato alla radice del progetto.")
     sys.exit(1)
-
-# --- CONFIGURAZIONE DINAMICA TRAMITE VARIABILI D'AMBIENTE ---
-# Se le variabili d'ambiente non sono configurate nel sistema,
-# l'applicazione userà i vecchi valori di default per retrocompatibilità in locale.
-DB_HOST = os.environ.get("DB_HOST", "db")
-DB_USER = os.environ.get("DB_USER", "menu")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "menu")
-DB_PORT = os.environ.get("DB_PORT", "3306")
-DB_NAME = os.environ.get("DB_NAME", "menu_progetto")
-
-# Ricostruiamo l'URL di connessione di SQLAlchemy in modo dinamico
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Frequenze settimanali desiderate per proteina.
 # Nota: la somma e' 18 su 14 slot settimanali, quindi il pool viene troncato
@@ -51,7 +39,7 @@ def attendi_database(engine: Engine, tentativi: int = 10, attesa: int = 5) -> bo
 
     Il nome conta: chiamandola test_* pytest la raccoglierebbe come test.
     """
-    print(f"Inizializzazione database via {DB_HOST}...")
+    print(f"Inizializzazione database via {CONFIG.host}...")
 
     for i in range(tentativi):
         try:
@@ -61,7 +49,13 @@ def attendi_database(engine: Engine, tentativi: int = 10, attesa: int = 5) -> bo
                 print("Connessione stabilita con successo!")
                 return True
         except Exception as e:
-            print(f"Tentativo {i+1}/{tentativi}: DB su {DB_HOST} non pronto... (Errore: {e})")
+            # Si stampa anche la CLASSE dell'eccezione: distingue "il database
+            # non e' ancora avviato" (OperationalError di rete, transitorio) da
+            # "le credenziali sono sbagliate" o "il database non esiste", che
+            # non sono transitori e continueranno a fallire fino all'ultimo
+            # tentativo consumando tutto il tempo di attesa.
+            print(f"Tentativo {i+1}/{tentativi}: DB su {CONFIG.host} non pronto... "
+                  f"({type(e).__name__}: {e})")
             time.sleep(attesa)
 
     return False
@@ -127,11 +121,12 @@ def sincronizza(
 
 
 def popola_db() -> None:
-    print(f"Configurazione connessione sul DB remoto -> {DB_HOST}:{DB_PORT}")
+    stampa_diagnostica(CONFIG)
+    verifica_o_esci(CONFIG)
     engine = create_engine(DATABASE_URL)
 
     if not attendi_database(engine):
-        print("Errore critico: Impossibile connettersi al Database dopo 10 tentativi.")
+        print("Errore critico: Impossibile connettersi al Database.")
         sys.exit(1)
 
     Base.metadata.create_all(engine)
