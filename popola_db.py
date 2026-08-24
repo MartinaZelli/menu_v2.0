@@ -208,11 +208,26 @@ def popola_db() -> None:
 
     try:
         sincronizza(session, PIATTI_DATA, MACRO_DESIDERATE, svuota_storico)
+        # Questa riga e' un contratto: la procedura di verifica documentata nel
+        # laboratorio Kubernetes la cerca nei log del Job. Non cambiarne il testo.
         print("Sincronizzazione database completata.")
     except Exception as e:
         session.rollback()
-        print(f"Errore durante il popolamento: {e}")
+        print(f"Errore durante il popolamento: {type(e).__name__}: {e}")
+        # Uscire con codice non-zero e' il punto di questa gestione.
+        #
+        # Prima l'eccezione veniva stampata e basta: il processo terminava con
+        # 0, quindi Docker e un Job Kubernetes consideravano il popolamento
+        # riuscito. Il risultato era un deploy verde su un database vuoto, e
+        # l'unico modo per accorgersene era leggere i log a mano.
+        #
+        # Con l'uscita a 1, il Job va in Failed dopo i suoi backoffLimit
+        # tentativi e il problema diventa visibile.
+        sys.exit(1)
     finally:
+        # sys.exit solleva SystemExit, che deriva da BaseException e non viene
+        # quindi intercettata dall'except qui sopra: il finally viene eseguito
+        # comunque e la sessione viene chiusa.
         session.close()
 
 
