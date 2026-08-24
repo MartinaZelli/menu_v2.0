@@ -1,0 +1,16 @@
+# Dipendenze necessarie SOLO per eseguire i test in locale.
+#
+# Questo file non viene mai copiato nell'immagine: il Dockerfile elenca i file
+# uno per uno (ADD requirements.txt, ADD src, ADD main.py, ...) e non lo include.
+# Le dipendenze di test restano quindi fuori dal container di produzione.
+#
+# Installazione:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest
+# httpx e' richiesto da fastapi.testclient.TestClient: e' il client HTTP che
+# esegue le richieste contro l'app in memoria, senza aprire una porta di rete.
+httpx
