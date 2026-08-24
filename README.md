@@ -346,12 +346,29 @@ frittata farcito" (×3).
 nomi_db = {p.nome: p for p in piatti_db}
 ```
 
-Con nomi duplicati le voci si sovrascrivono a vicenda: alla **seconda** esecuzione
-ne resta una sola per gruppo, e le altre finiscono tra le "obsolete da cancellare".
+Con nomi duplicati le voci si sovrascrivono a vicenda: le 4 righe di "Polpettone"
+collassano su **una sola** voce del dizionario, e tutte le operazioni destinate
+alle 4 varianti finiscono su quell'unica riga.
 
-Sintomo: dopo un secondo `popola_db.py`, alcuni piatti spariscono.
+**Il conteggio dei record non cambia** — restano 166 — ed è proprio questo che
+rende il difetto difficile da notare. A cambiare sono i dati *dentro* le righe.
+Due sintomi misurati:
+
+1. **Le modifiche a un piatto con nome duplicato vengono perse.** Correggendo nel
+   dataset il tempo del solo "Polpettone" di carne bianca, l'aggiornamento viene
+   applicato alla riga che ha vinto il dizionario e poi sovrascritto dalle varianti
+   successive. La riga giusta non viene mai toccata.
+2. **Rimuovere una variante non la cancella.** Togliendo dal dataset il "Polpettone"
+   di uova, il nome compare ancora fra i desiderati (altre 3 volte), quindi nessuna
+   riga risulta obsoleta: la riga resta e viene sovrascritta con i valori di
+   un'altra variante. Si finisce con due "latticini" e nessun "uova".
+
+C'è inoltre un aggravante latente: `session.query(PiattoDB).all()` non ha `ORDER BY`,
+quindi *quale* riga vince il dizionario non è garantito da MySQL e può cambiare fra
+un'esecuzione e l'altra.
 
 Correzione: usare come chiave la tupla `(nome, proteina)` invece del solo nome.
+Verificato che sul dataset attuale tutte le 166 coppie sono uniche.
 
 ## Gli errori di popolamento vengono ingoiati
 
