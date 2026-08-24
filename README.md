@@ -16,19 +16,25 @@ staticamente dalla stessa applicazione. Nessun build step per il frontend.
 ├── docker-compose.yml
 ├── main.py                  # entrypoint: monta router e file statici, avvia uvicorn
 ├── requirements.txt
+├── requirements-dev.txt     # dipendenze di test (NON entrano nell'immagine)
+├── pytest.ini
+├── ruff.toml                # configurazione del linter
 ├── popola_db.py             # script di inizializzazione/sincronizzazione DB
 ├── data_piatti.py           # dataset dei piatti (usato da popola_db.py)
 ├── .env                     # NON versionato: credenziali DB + HOST_IP
 ├── src/
 │   ├── __init__.py
-│   ├── database.py          # modelli ORM SQLAlchemy + init_db()
+│   ├── config.py            # configurazione del DB, condivisa app/popola_db
+│   ├── database.py          # modelli ORM SQLAlchemy + get_db() + init_db()
 │   ├── enums.py             # Proteina, Stagione, Tipologia, Giorni_settimana
+│   ├── health.py            # sonde /health/live e /health/ready
 │   ├── piatto.py            # modello Pydantic Piatto
 │   ├── piatto_manuale.py    # modello Pydantic PiattoManuale (pasto bloccato)
 │   ├── richiesta_menu.py    # modello Pydantic Richiesta (body di POST /menu)
 │   ├── risposta_menu.py     # modelli Pydantic Pasti / Pasti_settimana / Risposta
 │   ├── router.py            # endpoint FastAPI
 │   └── service.py           # logica di generazione e salvataggio del menù
+├── tests/                   # pytest su SQLite in memoria
 └── static/
     ├── index.html           # generatore di menù
     └── piatti.html          # gestione anagrafica piatti
@@ -58,19 +64,24 @@ sé, che va lanciato prima o indipendentemente.
 ### Ordine dei mount in `main.py`
 
 ```python
+app.include_router(health.router)                                   # PRIMA
 app.include_router(router.router)                                   # PRIMA
 app.mount("/", StaticFiles(directory="static", html=True), ...)     # POI
 ```
 
-L'ordine è vincolante. Un mount su `/` registrato prima del router
-intercetterebbe qualunque percorso, incluse le rotte `/menu`, e le API
-smetterebbero di rispondere. Non riordinare queste due righe.
+L'ordine è vincolante. Starlette valuta le rotte nell'ordine di registrazione e
+un mount su `/` corrisponde a **qualunque** percorso: registrato prima dei
+router intercetterebbe `/menu` e `/health`. Il guasto sarebbe subdolo — nessun
+errore in avvio, solo 404 — e `/piatti.html` continuerebbe a rispondere 200,
+quindi l'healthcheck di HAProxy resterebbe verde su un'applicazione senza API.
 
 ### Due livelli di modelli, allineati a mano
 
 - **ORM SQLAlchemy** in `src/database.py`: `PiattoDB`, `MacroDB`, `SettimanaDB`,
   `PastoSalvatoDB`.
-- **Pydantic** in `src/piatto.py`, `src/richiesta_menu.py`, `src/risposta_menu.py`.
+- **Pydantic** in `src/piatto.py` (`PiattoBase` → `Piatto`, che aggiunge l'`id`,
+  e `PiattoCreate`, che non lo prevede perché lo assegna il database),
+  `src/richiesta_menu.py`, `src/risposta_menu.py`.
 
 La conversione da riga di database a modello Pydantic avviene con
 `Piatto.model_validate(piatto_db)`, resa possibile da
@@ -78,6 +89,23 @@ La conversione da riga di database a modello Pydantic avviene con
 
 Non esiste generazione automatica di un livello dall'altro: aggiungere una colonna
 richiede di toccare entrambi i file.
+
+⚠️ **Aggiungere una colonna a un modello ORM è la modifica più pericolosa del
+repo.** `Base.metadata.create_all()` crea le tabelle mancanti ma **non esegue
+`ALTER TABLE`**, e i due laboratori hanno volumi persistenti: la colonna non
+comparirebbe e ogni query fallirebbe con `Unknown column`. L'applicazione
+partirebbe comunque, perché l'engine è lazy, e HAProxy resterebbe verde perché
+controlla un file statico. Serve una migrazione esplicita.
+
+### Sessioni del database: chi apre chiude
+
+Gli endpoint ricevono la sessione con `Depends(get_db)` e i service la ricevono
+come parametro. Né gli uni né gli altri devono chiamare `db.close()`: la
+chiusura avviene in un punto solo, nel `finally` di `get_db()`.
+
+È anche ciò che rende testabile il codice: nei test
+`app.dependency_overrides[get_db]` sostituisce la funzione con una che restituisce
+una sessione SQLite, senza toccare né l'engine né i moduli.
 
 ### Gli enum non arrivano al database
 
@@ -88,6 +116,8 @@ sia `src/service.py` lavorano sui **valori stringa**:
 ```python
 p.proteina == "carne bianca"     # confronto su stringa, non su Proteina.CARNE_BIANCA
 ```
+
+`valore_enum()` in `src/enums.py` è l'unico punto che estrae `.value`.
 
 Conseguenza: cambiare un `value` in `enums.py` non produce un errore di importazione,
 ma rompe silenziosamente il matching finché i record già in tabella non vengono
@@ -158,15 +188,34 @@ Tutti gli endpoint sono sotto il prefisso `/menu`.
 | `POST` | `/menu/salva` | salva il menù generato nello storico |
 | `GET` | `/menu/elenco-piatti` | elenco completo dei piatti |
 | `POST` | `/menu/aggiungi-piatto` | inserisce un piatto in anagrafica |
-| `DELETE` | `/menu/elimina-piatto/{id}` | rimuove un piatto |
+| `DELETE` | `/menu/elimina-piatto/{id}` | rimuove un piatto (404 se non esiste, 409 se è usato in un menù) |
+
+Fuori dal prefisso, per le sonde di Kubernetes:
+
+| Metodo | Percorso | Descrizione |
+|---|---|---|
+| `GET` | `/health/live` | il processo risponde. **Non tocca il database** |
+| `GET` | `/health/ready` | il processo *e* il database rispondono (`SELECT 1`). 503 se no |
 
 Il frontend è montato sulla radice `/` con `StaticFiles(..., html=True)`, quindi
 `http://host:porta/` serve `index.html` e `/piatti.html` la pagina di anagrafica.
 
 Documentazione interattiva generata da FastAPI: `/docs`.
 
-Non esiste un endpoint `/health`: le probe di readiness/liveness su Kubernetes non
-sono configurabili correttamente finché non viene aggiunto.
+**Perché le sonde sono due.** Kubernetes reagisce in modo opposto: se fallisce la
+*liveness* **uccide e riavvia** il container, se fallisce la *readiness* lo toglie
+dagli endpoint del Service lasciandolo vivo. Mettere il controllo del database
+nella liveness farebbe riavviare in ciclo tutte le repliche a ogni singhiozzo del
+database — si aggiunge carico a un database già in sofferenza, e riavviare l'app
+non ripara il database. Nella readiness i pod restano vivi, smettono di ricevere
+traffico e vi rientrano da soli.
+
+Entrambe sono dichiarate `def` e non `async def`: un `SELECT 1` bloccante dentro
+una funzione async bloccherebbe l'event loop per tutta la durata del timeout, e
+in quella finestra **anche `/health/live` smetterebbe di rispondere**.
+
+⚠️ I due laboratori non le usano ancora: HAProxy controlla `/piatti.html` e i
+manifest Kubernetes non hanno probe. Vanno configurate a mano — vedi `NOTE_LAB.md`.
 
 ---
 
@@ -183,11 +232,43 @@ Tutta via variabili d'ambiente, con default pensati per lo sviluppo locale:
 | `DB_PASSWORD` | `menu` | |
 | `HOST_IP` | *(nessuno)* | usato **solo** da Compose per il binding della porta |
 
+Facoltative, tutte con un default che riproduce il comportamento precedente:
+
+| Variabile | Default | Note |
+|---|---|---|
+| `DB_STRICT` | `false` | se `true`, l'uso di un default termina il processo con codice 1 |
+| `DB_RETRY_TENTATIVI` | `30` | tentativi di connessione di `popola_db.py` |
+| `DB_RETRY_ATTESA` | `5` | secondi fra un tentativo e l'altro |
+| `POPOLA_DB_SVUOTA_STORICO` | `true` | se `false`, il popolamento non azzera `pasti_salvati` |
+
 I default esistono per retrocompatibilità locale: **in qualsiasi deploy vanno
 sovrascritti tutti**, `DB_NAME` incluso.
 
-`DB_*` sono lette in **due punti indipendenti** — `src/database.py` e `popola_db.py`
-ne hanno ciascuno la propria copia. Modificandone una, va aggiornata anche l'altra.
+`DB_*` sono lette in **un solo punto**, `src/config.py`, importato sia dall'app
+sia da `popola_db.py`. Il modulo sta in `src/` e non nella radice perché il
+Dockerfile elenca i file uno per uno: un modulo nella radice supererebbe il build
+e fallirebbe all'avvio con `ModuleNotFoundError`.
+
+### Diagnostica all'avvio
+
+L'applicazione e `popola_db.py` stampano, come prima cosa, a quale database si
+stanno collegando e **se un valore proviene da un default**:
+
+```
+[config] DB_HOST=mysql.db.svc.cluster.local  (da ambiente)
+[config] DB_NAME=menu_progetto  (DEFAULT — nessuna variabile d'ambiente!)
+[config] DSN: mysql+pymysql://menu_user:***@mysql.db.svc.cluster.local:3306/menu
+```
+
+La password è sempre mascherata. Serve perché i default sono sbagliati **in modo
+plausibile**: producono un errore di connessione o, peggio, una connessione a un
+database esistente ma diverso da quello atteso. Senza questa riga il fallback
+resta invisibile finché non si indaga.
+
+Con `DB_STRICT=true` un fallback diventa un errore fatale. Il controllo è
+eseguito da `main()` e da `popola_db()`, **mai a livello di modulo**: un
+`sys.exit` all'import farebbe fallire `import src.database`, mandando il
+container in crashloop e impedendo perfino l'esecuzione dei test.
 
 `popola_db.py` richiede inoltre `PYTHONPATH=/app` nel container, perché gira da
 `/app/popola_db/` ma importa `from src.database import ...`.
@@ -276,8 +357,44 @@ corrispondente in `/etc/hosts`.
 
 ### Test e qualità
 
-Il repository **non contiene test, linter o formatter configurati**. Non esistono
-`pytest`, `ruff` o simili: la verifica è manuale, tipicamente da `/docs`.
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+
+./.venv/bin/python -m pytest              # tutti i test
+./.venv/bin/python -m pytest -k duplicato # per nome
+./.venv/bin/ruff check .                  # linter
+./.venv/bin/ruff check --fix .
+```
+
+I test girano su **SQLite in memoria**: non serve un database avviato e ogni
+test parte da uno stato pulito. `tests/conftest.py` documenta tre dettagli senza
+i quali i test sembrerebbero funzionare senza verificare nulla:
+
+- **`poolclass=StaticPool`** — un database SQLite in memoria vive dentro la
+  singola connessione che lo ha creato. Con il pool normale ogni nuova
+  connessione vedrebbe un database vuoto, e il sintomo sarebbe un
+  `no such table` apparentemente casuale.
+- **`check_same_thread=False`** — `TestClient` esegue l'app in un thread diverso
+  da quello del test.
+- **`PRAGMA foreign_keys=ON`** — SQLite **non applica le foreign key** se non
+  glielo si chiede, a ogni connessione. Senza, il test «eliminare un piatto
+  referenziato deve dare 409» passerebbe in verde anche con la correzione
+  assente: un test che non può fallire non è un test.
+
+**Cosa SQLite non cattura:** `VARCHAR` troppo corti, differenze di collation
+(MySQL è case-insensitive di default, SQLite no) e soprattutto gli errori
+`Unknown column`. La verifica sullo stack reale resta indispensabile:
+
+```bash
+curl -s localhost:8000/menu/elenco-piatti | head -c 200
+curl -I localhost:8000/piatti.html          # deve dare 200: healthcheck HAProxy
+curl -s localhost:8000/health/ready
+```
+
+Il linter è configurato in `ruff.toml` con `target-version = "py312"`, cioè la
+versione dell'**immagine** e non quella della macchina di sviluppo: è ciò che
+evita di introdurre costrutti che in produzione non girerebbero.
 
 ---
 
@@ -319,159 +436,166 @@ costringerebbe a rifare `apk add` e `pip install` a ogni build.
 Non è un semplice "inserisci tutto": **sincronizza** l'anagrafica verso lo stato
 descritto in `data_piatti.py`.
 
-- attende il database, ritentando 10 volte a distanza di 5 secondi;
+- attende il database, ritentando **30 volte a distanza di 5 secondi** (150
+  secondi in tutto, configurabili con `DB_RETRY_TENTATIVI` e `DB_RETRY_ATTESA`).
+  Erano 10 tentativi, cioè 50 secondi, ma un MySQL al **primo** avvio — quando
+  deve ancora inizializzare il volume dei dati — impiega regolarmente più di due
+  minuti: lo script si arrendeva prima che il database fosse pronto;
 - crea le tabelle mancanti con `Base.metadata.create_all()`;
-- aggiorna i piatti già presenti, aggiunge i nuovi, **cancella quelli non più nel
-  dataset**;
-- **svuota `pasti_salvati` a ogni esecuzione**.
+- indicizza i piatti esistenti per **coppia `(nome, proteina)`**, aggiorna quelli
+  presenti, aggiunge i nuovi e **cancella quelli non più nel dataset**;
+- **svuota `pasti_salvati` a ogni esecuzione** (disattivabile con
+  `POPOLA_DB_SVUOTA_STORICO=false`);
+- **esce con codice 1** se qualcosa fallisce.
 
-Quest'ultimo punto non è innocuo: rilanciarlo cancella lo storico dei menù. Non è
-un passo di routine da eseguire a ogni deploy.
+### Perché lo svuotamento dello storico è strutturale
+
+Non è solo una comodità. `PastoSalvatoDB.piatto_id` è una foreign key **senza
+`ON DELETE`**: finché un menù salvato referenzia un piatto, quel piatto non è
+cancellabile. È lo svuotamento a rendere possibile la rimozione dei piatti
+obsoleti.
+
+Conseguenza diretta: con `POPOLA_DB_SVUOTA_STORICO=false`, un piatto tolto dal
+dataset ma già usato in un menù salvato fa fallire la sincronizzazione con
+`IntegrityError`. È il motivo per cui lo svuotamento resta il comportamento
+predefinito, nonostante cancelli lo storico.
+
+### Il codice di uscita
+
+Prima l'eccezione veniva stampata e il processo terminava comunque con `0`:
+Docker e un Job Kubernetes consideravano il popolamento riuscito, e si otteneva
+un **deploy verde su un database vuoto**.
+
+La riga `Sincronizzazione database completata.` resta un contratto: la procedura
+di verifica documentata nel laboratorio Kubernetes la cerca testualmente nei log.
 
 ---
 
 # Punti critici e fragilità
 
-## Nomi duplicati in `data_piatti.py`
+## Risolti in questo consolidamento
 
-Il dataset contiene volutamente piatti con lo **stesso nome ma proteine diverse**.
-Su 166 record ci sono **153 nomi distinti**: 10 nomi compaiono più volte, tra cui
-"Polpettone" (×4, con carne rossa, carne bianca, latticini e uova) e "Rotolo di
-frittata farcito" (×3).
+Restano documentati perché i due laboratori possono ancora girare codice
+precedente, e perché i test che li coprono non vanno rimossi.
 
-`popola_db.py` però costruisce l'indice dei piatti esistenti come dizionario
-`nome → oggetto`:
+| Difetto | Sintomo | Correzione |
+|---|---|---|
+| Indice dei piatti sul solo nome | Le modifiche a un piatto omonimo finivano sulla riga sbagliata e andavano perse; rimuovere una variante non la cancellava. **Il conteggio restava 166**, ed è per questo che non si notava | chiave `(nome, proteina)` |
+| Errori di popolamento ingoiati | Uscita con codice 0 su un database vuoto: deploy verde, Job `Completed` | `sys.exit(1)` |
+| Attesa del database troppo breve | 10 tentativi × 5s = 50s, contro i oltre 2 minuti di un MySQL al primo avvio | 30 tentativi, configurabili |
+| `tipologia` scartata in scrittura | Ogni piatto aggiunto dall'interfaccia risultava un «primo» | valore rispettato, e selettore aggiunto al modulo |
+| `id` obbligatorio in inserimento | Il frontend inviava `id: 0` per aggirare il vincolo | schema `PiattoCreate` |
+| Campo `descrizione` inesistente | L'API restituiva sempre `null` | campo rimosso (**non** colonna aggiunta) |
+| `DELETE` su piatto referenziato | 500 non gestito; un id inesistente rispondeva 200 «deleted» | 409 e 404 |
+| `stagione` non `Optional` | Una sola riga con `stagione` NULL faceva fallire con 500 l'**intera** `/menu/elenco-piatti` | `Optional` negli schemi di lettura |
+| Assenza di `/health` | Probe Kubernetes non configurabili | `/health/live` e `/health/ready` |
+| Configurazione duplicata | Due copie da tenere allineate a mano, con default sbagliati e invisibili | `src/config.py` + diagnostica all'avvio |
+| Blocchi persi al salvataggio | L'utente bloccava un piatto, lo vedeva col lucchetto, salvava, e nel database finiva quello vecchio | i blocchi vengono fusi nel payload |
 
-```python
-nomi_db = {p.nome: p for p in piatti_db}
-```
+## Ancora aperti
 
-Con nomi duplicati le voci si sovrascrivono a vicenda: le 4 righe di "Polpettone"
-collassano su **una sola** voce del dizionario, e tutte le operazioni destinate
-alle 4 varianti finiscono su quell'unica riga.
-
-**Il conteggio dei record non cambia** — restano 166 — ed è proprio questo che
-rende il difetto difficile da notare. A cambiare sono i dati *dentro* le righe.
-Due sintomi misurati:
-
-1. **Le modifiche a un piatto con nome duplicato vengono perse.** Correggendo nel
-   dataset il tempo del solo "Polpettone" di carne bianca, l'aggiornamento viene
-   applicato alla riga che ha vinto il dizionario e poi sovrascritto dalle varianti
-   successive. La riga giusta non viene mai toccata.
-2. **Rimuovere una variante non la cancella.** Togliendo dal dataset il "Polpettone"
-   di uova, il nome compare ancora fra i desiderati (altre 3 volte), quindi nessuna
-   riga risulta obsoleta: la riga resta e viene sovrascritta con i valori di
-   un'altra variante. Si finisce con due "latticini" e nessun "uova".
-
-C'è inoltre un aggravante latente: `session.query(PiattoDB).all()` non ha `ORDER BY`,
-quindi *quale* riga vince il dizionario non è garantito da MySQL e può cambiare fra
-un'esecuzione e l'altra.
-
-Correzione: usare come chiave la tupla `(nome, proteina)` invece del solo nome.
-Verificato che sul dataset attuale tutte le 166 coppie sono uniche.
-
-## Gli errori di popolamento vengono ingoiati
-
-`popola_db()` cattura le eccezioni, stampa il messaggio e **non esce con codice
-non-zero**. Un fallimento risulta quindi come esecuzione riuscita per Docker e per
-un Job Kubernetes.
-
-Non fidarsi dello stato di uscita: leggere i log e cercare la riga
-`Sincronizzazione database completata.`
-
-Correzione: `sys.exit(1)` nel blocco `except`.
-
-## `tipologia` è ignorata in scrittura
-
-`POST /menu/aggiungi-piatto` riceve il campo `tipologia` dal client ma lo scarta,
-scrivendo una costante:
-
-```python
-tipologia="primo"   # in src/router.py
-```
-
-Anche il frontend (`static/piatti.html`) invia `tipologia: "primo"` fisso. Ne segue
-che ogni piatto aggiunto dall'interfaccia è un primo, qualunque cosa sia in realtà,
-e l'enum `Tipologia` resta di fatto inutilizzato in scrittura.
-
-## `id` obbligatorio su un piatto ancora inesistente
-
-Il modello Pydantic `Piatto` dichiara `id: int` come campo **obbligatorio**, anche
-quando il piatto va ancora creato. Il frontend aggira il vincolo inviando `id: 0`,
-che il database poi ignora grazie all'auto-increment.
-
-Correzione: separare il modello di input (senza `id`) da quello di output — la
-distinzione classica fra uno schema `PiattoCreate` e uno `PiattoRead`.
-
-## Campo `descrizione` inesistente nel database
-
-`Piatto` espone `descrizione: Optional[str]`, ma `PiattoDB` non ha la colonna
-corrispondente: `GET /menu/elenco-piatti` restituisce quindi sempre `null`.
-
-## Eliminare un piatto referenziato restituisce 500
-
-`DELETE /menu/elimina-piatto/{id}` esegue la cancellazione senza verificare i
-riferimenti. Se il piatto compare in `pasti_salvati`, la foreign key viene violata
-e l'endpoint fallisce con un errore non gestito. Il frontend non mostra il
-messaggio: chiama `fetch` senza controllare `res.ok`, quindi l'eliminazione sembra
-riuscita finché la lista non si ricarica identica.
-
-## CORS aperto a chiunque
+### CORS aperto a chiunque
 
 ```python
 allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 ```
 
-Il commento nel codice dice "perfetto per sviluppo", ed è corretto — ma va ristretto
-prima di qualsiasi esposizione reale, altrimenti qualunque sito può chiamare queste
-API dal browser di un utente autenticato sulla stessa rete.
+Accettabile in sviluppo, da restringere prima di qualsiasi esposizione reale:
+altrimenti qualunque sito può chiamare queste API dal browser di un utente.
 
-## Dipendenze non fissate
+### Nessuna autenticazione
 
-`requirements.txt` elenca i pacchetti senza versione. Due build a distanza di mesi
-possono produrre immagini diverse a parità di codice: è il tipo di problema che si
-manifesta come "funzionava ieri".
+`DELETE /menu/elimina-piatto/{id}` è aperto a chiunque raggiunga la porta 8000, e
+in Kubernetes il Service è un `NodePort` su 30080.
 
-Correzione: `pip freeze > requirements.txt` da un ambiente funzionante, o passare a
-uno strumento con lock file.
+### Dipendenze non fissate
 
-## Immagine sovradimensionata
+`requirements.txt` elenca i pacchetti senza versione. Due build a distanza di
+mesi possono produrre immagini diverse a parità di codice.
 
-L'immagine pesa **567 MB** sul disco (151 MB compressi). Il Dockerfile installa
-`gcc`, `g++`, `musl-dev` e le librerie di sviluppo MariaDB per compilare i pacchetti
-Python con parti in C — ma questi restano nell'immagine finale anche dopo la build,
-e oggi `cryptography` distribuisce pacchetti precompilati per Alpine.
+Un caso concreto già evitato: `src/database.py` importava `declarative_base` da
+`sqlalchemy.ext.declarative`, un alias legacy che emette già oggi un
+`MovedIn20Warning` e che sparisce in SQLAlchemy 2.1. Senza versioni fissate
+sarebbe diventato un `ImportError` all'avvio, senza preavviso e senza che nulla
+fosse cambiato nel codice.
 
-Correzione: build **multi-stage**, con i compilatori solo nello stage intermedio.
+⚠️ **`cryptography` non va rimosso** «perché non sembra usato»: MySQL 8 usa
+`caching_sha2_password` e senza quel pacchetto PyMySQL non riesce ad
+autenticarsi. È un errore a runtime, non a build.
 
-## Il container gira come root
+### Immagine sovradimensionata e container root
 
-Nessuna istruzione `USER` nel Dockerfile. Un processo compromesso ha privilegi di
-root dentro il container.
+L'immagine pesa **567 MB** (151 MB compressi) e non ha alcuna istruzione `USER`.
+Il Dockerfile installa `gcc`, `g++`, `musl-dev` e le librerie di sviluppo
+MariaDB, che restano nell'immagine finale anche dopo la build — ma PyMySQL è
+**puro Python** e `cryptography` distribuisce da anni wheel precompilate per
+Alpine.
 
-Correzione: creare un utente non privilegiato e aggiungere `USER app`.
+Correzione prevista: verificare se il blocco `apk add` sia del tutto superfluo,
+poi build multi-stage e utente non privilegiato (`USER` **dopo** i `pip install`,
+altrimenti il build fallisce per permessi).
 
-## Accoppiamento fra enum e dati già scritti
+### L'applicazione non crea mai le tabelle
 
-Modificare un `value` in `src/enums.py` senza migrare i record esistenti non produce
-un errore immediato, ma fa fallire i confronti su stringa in `service.py`: i piatti
-con il vecchio valore smettono di essere selezionabili e il menù si riempie di
-segnaposto "Manca …".
+`init_db()` esiste in `src/database.py` ma **non è chiamato da nessuno**: solo
+`popola_db.py` esegue `create_all`. È una scelta corretta — due repliche che
+fanno DDL in parallelo sono una pessima idea — ma è una dipendenza d'ordine
+implicita: senza il popolamento, l'app parte e ogni richiesta va in 500 con
+`Table 'piatti' doesn't exist`.
+
+### Accoppiamento fra enum e dati già scritti
+
+Modificare un `value` in `src/enums.py` senza migrare i record esistenti non
+produce un errore immediato, ma fa fallire i confronti su stringa in
+`service.py`: i piatti con il vecchio valore smettono di essere selezionabili e
+il menù si riempie di segnaposto «Manca …».
+
+### Il sentinella `id=999` non è a prova di crescita
+
+`popola_db` inserisce i piatti con id **espliciti** 1-166, quindi
+l'`AUTO_INCREMENT` riparte da 167. Servirebbero 833 piatti aggiunti
+dall'interfaccia perché uno reale ottenga l'id 999 e venga scambiato per un
+segnaposto. Improbabile, ma la soluzione pulita (un flag booleano) costa poco.
+
+Effetto collaterale correlato: **un piatto aggiunto dall'interfaccia viene
+cancellato al successivo `popola_db`**, perché non è in `data_piatti.py` e
+finisce fra gli obsoleti.
 
 ---
 
 # Da fare
 
-- [ ] Endpoint `/health` per le sonde di readiness/liveness su Kubernetes
-- [ ] Chiave `(nome, proteina)` in `popola_db.py`
-- [ ] `sys.exit(1)` sugli errori di popolamento
-- [ ] Rispettare `tipologia` in `POST /menu/aggiungi-piatto` (backend e frontend)
-- [ ] Schemi separati `PiattoCreate` / `PiattoRead` per togliere l'`id` fittizio
-- [ ] Colonna `descrizione` in `PiattoDB`, oppure rimuovere il campo dal modello
-- [ ] Gestire la violazione di foreign key su `DELETE /menu/elimina-piatto/{id}`
-- [ ] Versioni fissate in `requirements.txt`
+## Fatto
+
+- [x] Endpoint `/health/live` e `/health/ready` per le sonde Kubernetes
+- [x] Chiave `(nome, proteina)` in `popola_db.py`
+- [x] `sys.exit(1)` sugli errori di popolamento
+- [x] Rispettare `tipologia` in `POST /menu/aggiungi-piatto` (backend e frontend)
+- [x] Schema `PiattoCreate` per togliere l'`id` fittizio
+- [x] Campo `descrizione` rimosso dal modello (la colonna **non** è stata aggiunta)
+- [x] `DELETE /menu/elimina-piatto/{id}`: 404 e 409 al posto del 500
+- [x] Test automatici (pytest su SQLite in memoria) e linter (ruff)
+- [x] Configurazione del database in un punto solo, con diagnostica all'avvio
+- [x] Attesa del database allungata e resa configurabile
+
+## Da fare
+
 - [ ] Dockerfile multi-stage e utente non-root
+- [ ] Versioni fissate in `requirements.txt`
 - [ ] Restringere CORS
-- [ ] Test automatici (nessuno presente)
+- [ ] Autenticazione sugli endpoint di scrittura
+- [ ] Sostituire il sentinella `id=999` con un flag esplicito
+- [ ] Preservare i piatti aggiunti dall'interfaccia fra un popolamento e l'altro
 - [ ] Scegliere una licenza (senza file `LICENSE` il codice è "tutti i diritti
   riservati" anche in un repo pubblico)
+
+## Nei laboratori
+
+Da fare **a mano**, nei rispettivi repo — la traccia completa è in `NOTE_LAB.md`
+(non versionato):
+
+- [ ] Kubernetes: `readinessProbe` e `livenessProbe` in `20-web-deployment.yaml`
+- [ ] Ansible: `LB_CHECK_PATH` da `/piatti.html` a `/health/ready`
+- [ ] Attenzione: senza `imagePullPolicy` i nodi tengono `:v2` in cache, e il
+  ruolo Ansible gira con `build: policy` — in entrambi i casi il codice nuovo
+  può non arrivare mai, senza alcun errore

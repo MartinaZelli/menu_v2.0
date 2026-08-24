@@ -3,3 +3,6 @@ __pycache__/
 .env
 .venv/
 .pytest_cache/
+
+# Note operative sui due laboratori: contesto locale, non fa parte del progetto.
+NOTE_LAB.md
