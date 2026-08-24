@@ -1,13 +1,14 @@
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.database import get_db, PiattoDB
-from src.risposta_menu import Risposta
-from src.richiesta_menu import Richiesta
-from src.piatto import Piatto
 import src.service
+from src.database import PiattoDB, get_db
+from src.piatto import Piatto, PiattoCreate
+from src.richiesta_menu import Richiesta
+from src.risposta_menu import Risposta
 
 router = APIRouter(
     prefix="/menu",
@@ -40,28 +41,59 @@ def ottieni_piatti(db: Session = Depends(get_db)) -> List[PiattoDB]:
     return db.query(PiattoDB).all()
 
 
+def _valore(campo: object) -> object:
+    """Estrae il valore di un enum, lasciando intatto tutto il resto.
+
+    Le colonne sono String, non Enum SQL: nel database finiscono le stringhe.
+    """
+    return campo.value if hasattr(campo, "value") else campo
+
+
 @router.post("/aggiungi-piatto")
-def aggiungi_piatto(piatto: Piatto, db: Session = Depends(get_db)) -> Dict[str, str]:
+def aggiungi_piatto(piatto: PiattoCreate, db: Session = Depends(get_db)) -> Dict[str, str]:
     try:
         nuovo = PiattoDB(
             nome=piatto.nome,
-            proteina=piatto.proteina.value if hasattr(piatto.proteina, 'value') else piatto.proteina,
-            stagione=piatto.stagione.value if hasattr(piatto.stagione, 'value') else piatto.stagione,
+            proteina=_valore(piatto.proteina),
+            stagione=_valore(piatto.stagione),
             tempo=piatto.tempo,
             adatto_al_lavoro=piatto.adatto_al_lavoro,
-            tipologia="primo" # Assicurati che questo campo esista nel tuo PiattoDB
+            # La tipologia inviata dal client veniva scartata e sostituita da
+            # "primo" fisso: ogni piatto aggiunto dall'interfaccia risultava un
+            # primo, qualunque cosa fosse.
+            tipologia=_valore(piatto.tipologia),
         )
         db.add(nuovo)
         db.commit()
         return {"status": "success"}
     except Exception as e:
         db.rollback()
-        print(f"Errore aggiunta piatto: {e}")  # sostituito da logging nella fase 3
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/elimina-piatto/{id}")
 def elimina_piatto(id: int, db: Session = Depends(get_db)) -> Dict[str, str]:
-    db.query(PiattoDB).filter(PiattoDB.id == id).delete()
-    db.commit()
+    try:
+        righe = db.query(PiattoDB).filter(PiattoDB.id == id).delete()
+        # Il valore di ritorno di .delete() veniva ignorato: eliminare un id
+        # inesistente rispondeva 200 {"status": "deleted"} senza aver cancellato
+        # nulla, e il frontend ricaricava una lista identica senza spiegazioni.
+        if righe == 0:
+            db.rollback()
+            raise HTTPException(status_code=404, detail=f"Nessun piatto con id {id}.")
+        db.commit()
+    except IntegrityError as e:
+        # PastoSalvatoDB.piatto_id e' una foreign key senza ON DELETE: un
+        # piatto gia' usato in un menu salvato non e' cancellabile.
+        #
+        # 409 e non 500: non e' un guasto dell'applicazione, e' una richiesta
+        # in conflitto con lo stato attuale dei dati, e il messaggio deve
+        # dirlo in modo comprensibile invece di esporre un errore SQL.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Il piatto {id} compare in uno o piu' menu salvati e non "
+                    f"puo' essere eliminato."),
+        ) from e
+
     return {"status": "deleted"}

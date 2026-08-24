@@ -32,6 +32,10 @@
             <select id="stagione">
                 <option value="generico">Generico</option><option value="estate">Estate</option><option value="inverno">Inverno</option>
             </select>
+            <select id="tipologia">
+                <option value="unico">Piatto unico</option><option value="primo">Primo</option>
+                <option value="secondo">Secondo</option><option value="contorno">Contorno</option>
+            </select>
             <input type="number" id="tempo" placeholder="Minuti">
             <label><input type="checkbox" id="lavoro"> Per Lavoro</label>
             <button class="btn-add" onclick="aggiungiPiatto()">Salva Piatto</button>
@@ -71,13 +75,14 @@
     }
 
     const nuovo = {
-        id: 0, // Inseriamo un ID zero: FastAPI lo valida, il DB lo sovrascrive
+        // Nessun id: lo assegna il database. L'endpoint accetta ora uno schema
+        // PiattoCreate che non lo prevede.
         nome: nome,
         proteina: document.getElementById('proteina').value,
         stagione: document.getElementById('stagione').value,
         tempo: parseInt(tempo),
         adatto_al_lavoro: document.getElementById('lavoro').checked,
-        tipologia: "primo" // Assicurati che 'primo' sia un valore valido nel tuo Enum Tipologia
+        tipologia: document.getElementById('tipologia').value
     };
 
     console.log("Invio dati:", nuovo); // Controlla nella console di F12 cosa viene inviato
@@ -101,10 +106,17 @@
 }
 
         async function eliminaPiatto(id) {
-            if(confirm("Sicuro di voler eliminare questo piatto?")) {
-                await fetch(`/menu/elimina-piatto/${id}`, { method: 'DELETE' });
-                caricaPiatti();
+            if (!confirm("Sicuro di voler eliminare questo piatto?")) return;
+
+            const res = await fetch(`/menu/elimina-piatto/${id}`, { method: 'DELETE' });
+            // Prima l'esito veniva ignorato: un'eliminazione fallita sembrava
+            // riuscita, e l'unico indizio era la lista che si ricaricava identica.
+            if (!res.ok) {
+                const errore = await res.json().catch(() => ({}));
+                alert(errore.detail || `Eliminazione non riuscita (codice ${res.status}).`);
+                return;
             }
+            caricaPiatti();
         }
 
         caricaPiatti();
