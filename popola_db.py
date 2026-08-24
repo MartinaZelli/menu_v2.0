@@ -1,6 +1,6 @@
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -24,7 +24,7 @@ except ImportError as e:
 # Frequenze settimanali desiderate per proteina.
 # Nota: la somma e' 18 su 14 slot settimanali, quindi il pool viene troncato
 # dal servizio e non tutte le frequenze sono soddisfatte a ogni generazione.
-MACRO_DESIDERATE: List[Dict[str, Any]] = [
+MACRO_DESIDERATE: list[dict[str, Any]] = [
     {"proteina": Proteina.LEGUMI.value, "frequenza": 3},
     {"proteina": Proteina.LATTICINI.value, "frequenza": 4},
     {"proteina": Proteina.CARNE_BIANCA.value, "frequenza": 4},
@@ -61,10 +61,47 @@ def attendi_database(engine: Engine, tentativi: int = 10, attesa: int = 5) -> bo
     return False
 
 
+Chiave = tuple[str, str | None]
+
+
+def _chiave_db(piatto: PiattoDB) -> Chiave:
+    return (piatto.nome, piatto.proteina)
+
+
+def _chiave_dataset(piatto: dict[str, Any]) -> Chiave:
+    return (piatto["nome"], piatto["proteina"])
+
+
+def verifica_chiavi_uniche(piatti_desiderati: list[dict[str, Any]]) -> None:
+    """Il dataset non deve contenere due piatti con la stessa (nome, proteina).
+
+    E' la condizione che rende affidabile l'indice usato da sincronizza(): se
+    un giorno venisse violata, il difetto delle voci che si sovrascrivono a
+    vicenda tornerebbe in silenzio. Meglio accorgersene qui, con un messaggio
+    che dice quale coppia e' duplicata.
+    """
+    viste: set[Chiave] = set()
+    duplicate: set[Chiave] = set()
+    for piatto in piatti_desiderati:
+        chiave = _chiave_dataset(piatto)
+        if chiave in viste:
+            duplicate.add(chiave)
+        viste.add(chiave)
+
+    if duplicate:
+        elenco = ", ".join(f"{nome} ({proteina})" for nome, proteina in sorted(
+            duplicate, key=lambda c: (c[0], c[1] or "")))
+        raise ValueError(
+            f"Il dataset contiene {len(duplicate)} coppie (nome, proteina) "
+            f"duplicate: {elenco}. Vanno rese distinte, altrimenti la "
+            f"sincronizzazione non puo' distinguere le righe fra loro."
+        )
+
+
 def sincronizza(
     session: Session,
-    piatti_desiderati: List[Dict[str, Any]],
-    macro_desiderate: List[Dict[str, Any]],
+    piatti_desiderati: list[dict[str, Any]],
+    macro_desiderate: list[dict[str, Any]],
     svuota_storico: bool = True,
 ) -> None:
     """Allinea il contenuto del database allo stato descritto dal dataset.
@@ -77,6 +114,8 @@ def sincronizza(
     chiamante, che e' anche l'unico a sapere se siamo in un test o in
     produzione.
     """
+    verifica_chiavi_uniche(piatti_desiderati)
+
     # 0. PULIZIA TOTALE DEI MENU SALVATI
     if svuota_storico:
         num_deleted = session.query(PastoSalvatoDB).delete()
@@ -93,24 +132,30 @@ def sincronizza(
         else:
             session.add(MacroDB(**m_data))
 
-    # Carica piatti esistenti
+    # Carica piatti esistenti.
+    #
+    # L'indice usa la coppia (nome, proteina) e non il solo nome: il dataset
+    # contiene di proposito piatti omonimi con proteine diverse (Polpettone
+    # esiste in 4 versioni). Con il solo nome le 4 righe collassavano su una
+    # sola voce del dizionario, e tutte le operazioni destinate alle 4
+    # varianti finivano sulla stessa riga: le modifiche andavano perse e una
+    # variante rimossa dal dataset non veniva mai cancellata.
     piatti_db = session.query(PiattoDB).all()
-    nomi_db = {p.nome: p for p in piatti_db}
-    nomi_desiderati = [p["nome"] for p in piatti_desiderati]
+    esistenti = {_chiave_db(p): p for p in piatti_db}
+    desiderate = {_chiave_dataset(p) for p in piatti_desiderati}
 
     # 2. Eliminazione piatti non più presenti
-    for nome, piatto_obj in nomi_db.items():
-        if nome not in nomi_desiderati:
-            print(f"Eliminazione piatto obsoleto: {nome}")
+    for chiave, piatto_obj in esistenti.items():
+        if chiave not in desiderate:
+            print(f"Eliminazione piatto obsoleto: {chiave[0]} ({chiave[1]})")
             session.delete(piatto_obj)
 
     # 3. Inserimento/Aggiornamento
     for p_data in piatti_desiderati:
-        if p_data["nome"] in nomi_db:
-            p_db = nomi_db[p_data["nome"]]
+        p_db = esistenti.get(_chiave_dataset(p_data))
+        if p_db is not None:
             p_db.tempo = p_data["tempo"]
             p_db.adatto_al_lavoro = p_data["adatto_al_lavoro"]
-            p_db.proteina = p_data["proteina"]
             p_db.tipologia = p_data["tipologia"]
             p_db.stagione = p_data["stagione"]
         else:

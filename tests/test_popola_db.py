@@ -2,29 +2,56 @@
 
 Il dataset contiene di proposito piatti con lo stesso nome ma proteine diverse
 (Polpettone esiste in 4 versioni: carne bianca, carne rossa, latticini, uova).
-sincronizza() indicizza pero' i piatti gia' presenti con il solo nome:
+
+sincronizza() indicizzava i piatti gia' presenti con il solo nome:
 
     nomi_db = {p.nome: p for p in piatti_db}
 
-Le 4 righe di Polpettone collassano quindi su una sola voce del dizionario, e
-tutte le operazioni destinate alle 4 varianti finiscono sulla stessa riga.
+Le 4 righe di Polpettone collassavano cosi' su una sola voce del dizionario, e
+tutte le operazioni destinate alle 4 varianti finivano sulla stessa riga.
 
-Il conteggio dei record NON cambia: e' questo che rende il bug difficile da
-notare. Cambiano i dati dentro le righe. I due test che seguono descrivono i
-due sintomi misurati.
+Il conteggio dei record NON cambiava - restavano 166 - ed e' proprio questo che
+rendeva il difetto difficile da notare: a cambiare erano i dati dentro le righe.
+I due test che descrivono i sintomi misurati sono
+test_modifica_a_piatto_con_nome_duplicato_viene_applicata e
+test_variante_rimossa_dal_dataset_viene_cancellata: vanno tenuti, perche' sono
+l'unica cosa che impedisce al difetto di rientrare.
 """
 from typing import Any
 
+import pytest
 from sqlalchemy.orm import Session
 
 from data_piatti import PIATTI_DATA
-from popola_db import MACRO_DESIDERATE, sincronizza
+from popola_db import MACRO_DESIDERATE, sincronizza, verifica_chiavi_uniche
 from src.database import MacroDB, PastoSalvatoDB, PiattoDB, SettimanaDB
 
 
 def _dataset() -> list[dict[str, Any]]:
     """Copia del dataset, per poterlo modificare senza inquinare gli altri test."""
     return [dict(p) for p in PIATTI_DATA]
+
+
+def test_il_dataset_ha_chiavi_uniche() -> None:
+    """Condizione che rende affidabile l'indice usato da sincronizza().
+
+    I nomi da soli non bastano (153 distinti su 166 record), ma le coppie
+    (nome, proteina) sono tutte diverse.
+    """
+    verifica_chiavi_uniche(PIATTI_DATA)
+
+    nomi = {p["nome"] for p in PIATTI_DATA}
+    assert len(nomi) == 153
+    assert len(PIATTI_DATA) == 166
+
+
+def test_un_dataset_con_chiavi_duplicate_viene_rifiutato() -> None:
+    """Se la condizione venisse violata, il difetto tornerebbe in silenzio."""
+    doppione = dict(PIATTI_DATA[0])
+    doppione["id"] = 9999
+
+    with pytest.raises(ValueError, match="duplicate"):
+        verifica_chiavi_uniche([*PIATTI_DATA, doppione])
 
 
 def test_primo_popolamento_inserisce_tutto(db: Session) -> None:
