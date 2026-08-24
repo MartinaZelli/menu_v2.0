@@ -1,0 +1,38 @@
+# Configurazione di ruff, il linter/formatter usato dal progetto.
+#
+# Prima ruff girava solo come estensione dell'editor, quindi le sue
+# segnalazioni dipendevano da chi aveva l'estensione installata. Con questo
+# file e la voce in requirements-dev.txt il controllo e' riproducibile:
+#
+#   .venv/bin/ruff check .          # segnala
+#   .venv/bin/ruff check --fix .    # corregge cio' che e' correggibile
+#
+# La versione di Python dichiarata e' quella dell'immagine (python:3.12-alpine),
+# NON quella eventualmente installata sulla macchina di sviluppo: e' cio' che
+# permette a ruff di proporre solo costrutti che gireranno davvero in produzione.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+    "E",      # errori di stile pycodestyle
+    "F",      # pyflagi: variabili non usate, import morti, nomi non definiti
+    "I",      # ordinamento degli import
+    "UP",     # costrutti superati per la versione di Python dichiarata
+    "B",      # bugbear: trappole comuni
+    "BLE",    # except troppo generici
+    "DTZ",    # date e orari senza fuso
+]
+
+ignore = [
+    # B008: FastAPI usa "Depends(...)" come valore predefinito degli argomenti.
+    # E' il modo previsto dal framework, non la trappola che la regola descrive.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# I test usano assert e possono catturare eccezioni generiche nei doppi di prova.
+"tests/*" = ["BLE001"]
+# data_piatti.py e' un file di DATI: 166 righe, una per piatto. Spezzarle
+# renderebbe il dataset piu' difficile da leggere e da modificare, non meno.
+"data_piatti.py" = ["E501"]

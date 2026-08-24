@@ -7,7 +7,7 @@ Il prezzo da pagare sono tre dettagli di configurazione senza i quali i test
 *sembrano* funzionare ma non verificano nulla. Sono commentati uno per uno
 qui sotto, perche' sono esattamente il tipo di cosa che fa perdere un'ora.
 """
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,8 +16,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.database import Base, get_db
 import main
+from src.database import Base, get_db
 
 
 @pytest.fixture

@@ -77,7 +77,8 @@ def stampa_diagnostica(config: ConfigurazioneDB) -> None:
         valore = getattr(config, chiave.removeprefix("DB_").lower())
         if chiave == "DB_PASSWORD":
             valore = "***"
-        origine = "DEFAULT — nessuna variabile d'ambiente!" if chiave in config.mancanti else "da ambiente"
+        origine = ("DEFAULT — nessuna variabile d'ambiente!"
+                   if chiave in config.mancanti else "da ambiente")
         print(f"[config] {chiave}={valore}  ({origine})")
     print(f"[config] DSN: {config.url_mascherato}")
 

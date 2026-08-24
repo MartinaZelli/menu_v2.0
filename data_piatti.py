@@ -1,4 +1,3 @@
-from src.enums import Tipologia, Stagione, Proteina
 
 PIATTI_DATA = [
     {"id": 1, "nome": "Pasta pomodoro e mozzarella", "proteina": "latticini", "stagione": "generico", "tempo": 30, "adatto_al_lavoro": False, "tipologia": "primo"},

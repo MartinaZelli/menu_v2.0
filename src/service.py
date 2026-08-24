@@ -1,14 +1,16 @@
 import random
 from datetime import date
-from typing import List, Dict, Optional
-from sqlalchemy.orm import Session
-from src.database import PiattoDB, MacroDB, SettimanaDB, PastoSalvatoDB
-from src.risposta_menu import Pasti, Pasti_settimana, Risposta
-from src.piatto import Piatto
-from src.enums import Proteina, Stagione, Tipologia
-from src.richiesta_menu import Richiesta
 
-def genera_pool_proteine_dinamico(frequenza: Dict[str, int], totale_target: int) -> List[str]:
+from sqlalchemy.orm import Session
+
+from src.database import MacroDB, PastoSalvatoDB, PiattoDB, SettimanaDB
+from src.enums import valore_enum
+from src.piatto import Piatto
+from src.richiesta_menu import Richiesta
+from src.risposta_menu import Pasti, Pasti_settimana, Risposta
+
+
+def genera_pool_proteine_dinamico(frequenza: dict[str, int], totale_target: int) -> list[str]:
     pool = []
     for prot, qta in frequenza.items():
         pool.extend([prot] * qta)
@@ -33,7 +35,7 @@ def genera_menu_ordinato(db: Session, richiesta: Richiesta) -> Risposta:
     
     frequenza_residua = frequenza_ideale.copy()
     for pb in pasti_bloccati:
-        prot = pb.piatto.proteina.value if hasattr(pb.piatto.proteina, 'value') else pb.piatto.proteina
+        prot = valore_enum(pb.piatto.proteina)
         if prot in frequenza_residua:
             frequenza_residua[prot] = max(0, frequenza_residua[prot] - 1)
 
@@ -57,7 +59,7 @@ def genera_menu_ordinato(db: Session, richiesta: Richiesta) -> Risposta:
                         p.proteina == prot_scelta and
                         (not stagioni_richieste or p.stagione in stagioni_richieste) and
                         p.tempo <= richiesta.tempo_massimo and
-                        p.adatto_al_lavoro == True]
+                        p.adatto_al_lavoro]
 
             if candidati:
                 piatto_db = random.choice(candidati)
@@ -94,14 +96,17 @@ def genera_menu_ordinato(db: Session, richiesta: Richiesta) -> Risposta:
                             p.proteina == prot_scelta and
                             (not stagioni_richieste or p.stagione in stagioni_richieste) and
                             p.tempo <= richiesta.tempo_massimo and
-                            (not is_lavoro or p.adatto_al_lavoro == True)]
+                            (not is_lavoro or p.adatto_al_lavoro)]
                 
                 if candidati:
                     p_db = random.choice(candidati)
                     mappa_pasti[chiave] = Piatto.model_validate(p_db)
                     pool_proteine.remove(prot_scelta)
                 else:
-                    mappa_pasti[chiave] = Piatto(id=999, nome=f"Manca {prot_scelta}", tempo=0, adatto_al_lavoro=False)
+                    mappa_pasti[chiave] = Piatto(
+                        id=999, nome=f"Manca {prot_scelta}",
+                        tempo=0, adatto_al_lavoro=False,
+                    )
 
     # 6. COSTRUZIONE RISPOSTA
     pasti_sett = {}
@@ -112,7 +117,9 @@ def genera_menu_ordinato(db: Session, richiesta: Richiesta) -> Risposta:
         )
 
     return Risposta(
-        data_inizio_settimana=richiesta.data_inizio_settimana or date.today(),
+        # date.today() e non datetime.now(UTC): la settimana del menu segue il
+        # calendario locale di chi lo usa, non un istante assoluto.
+        data_inizio_settimana=richiesta.data_inizio_settimana or date.today(),  # noqa: DTZ011
         tabella=Pasti_settimana(**pasti_sett)
     )
 
@@ -123,7 +130,9 @@ def salva_menu_settimanale(db_session: Session, risposta: Risposta) -> bool:
         ).first()
 
         if settimana:
-            db_session.query(PastoSalvatoDB).filter(PastoSalvatoDB.settimana_id == settimana.id).delete()
+            db_session.query(PastoSalvatoDB).filter(
+                PastoSalvatoDB.settimana_id == settimana.id
+            ).delete()
         else:
             settimana = SettimanaDB(data_inizio=risposta.data_inizio_settimana)
             db_session.add(settimana)
@@ -145,7 +154,7 @@ def salva_menu_settimanale(db_session: Session, risposta: Risposta) -> bool:
                         ))
         db_session.commit()
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - confine della richiesta: si risponde False, non si propaga
         db_session.rollback()
         print(f"Errore salvataggio: {e}")
         return False

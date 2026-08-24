@@ -1,4 +1,3 @@
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -18,7 +17,7 @@ class PiattoBase(BaseModel):
     # lazy - lasciando un'applicazione morta con HAProxy verde, dato che
     # controlla un file statico. Se un giorno servira' davvero, e' un
     # intervento a se' con un passo di migrazione esplicito.
-    proteina: Optional[Proteina] = None
+    proteina: Proteina | None = None
     # stagione e tipologia sono Optional pur avendo un default.
     #
     # In Pydantic il default si applica quando il campo e' ASSENTE, non quando
@@ -27,10 +26,10 @@ class PiattoBase(BaseModel):
     # solleverebbe e - dato che l'endpoint dichiara response_model=List[Piatto] -
     # farebbe fallire con un 500 l'INTERA risposta di /menu/elenco-piatti, che
     # e' la verifica end-to-end documentata nei due laboratori.
-    stagione: Optional[Stagione] = Stagione.GENERICO
+    stagione: Stagione | None = Stagione.GENERICO
     tempo: int
     adatto_al_lavoro: bool
-    tipologia: Optional[Tipologia] = Tipologia.UNICO
+    tipologia: Tipologia | None = Tipologia.UNICO
 
     model_config = {"from_attributes": True}
 

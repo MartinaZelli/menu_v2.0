@@ -55,7 +55,7 @@ def attendi_database(engine: Engine, tentativi: int, attesa: int) -> bool:
                 connection.execute(text("SELECT 1"))
                 print("Connessione stabilita con successo!")
                 return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - qualunque errore qui significa "database non ancora pronto"
             # Si stampa anche la CLASSE dell'eccezione: distingue "il database
             # non e' ancora avviato" (OperationalError di rete, transitorio) da
             # "le credenziali sono sbagliate" o "il database non esiste", che
@@ -211,7 +211,7 @@ def popola_db() -> None:
         # Questa riga e' un contratto: la procedura di verifica documentata nel
         # laboratorio Kubernetes la cerca nei log del Job. Non cambiarne il testo.
         print("Sincronizzazione database completata.")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - confine del processo: ogni errore deve diventare exit(1)
         session.rollback()
         print(f"Errore durante il popolamento: {type(e).__name__}: {e}")
         # Uscire con codice non-zero e' il punto di questa gestione.

@@ -19,7 +19,6 @@ di connessione, e in quella finestra anche /health/live smetterebbe di
 rispondere: kubelet ucciderebbe il pod, cioe' esattamente il disastro che la
 separazione dei due endpoint serve a evitare.
 """
-from typing import Dict
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
@@ -31,13 +30,13 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/live")
-def liveness() -> Dict[str, str]:
+def liveness() -> dict[str, str]:
     """Non tocca il database di proposito: vedi il commento in testa al modulo."""
     return {"status": "alive"}
 
 
 @router.get("/ready")
-def readiness(response: Response, db: Session = Depends(get_db)) -> Dict[str, str]:
+def readiness(response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
     """Verifica che il database risponda davvero.
 
     Il controllo e' un SELECT 1 e non un conteggio dei piatti: "database
@@ -50,7 +49,7 @@ def readiness(response: Response, db: Session = Depends(get_db)) -> Dict[str, st
     """
     try:
         db.execute(text("SELECT 1"))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - qualunque errore significa "non pronto", ed e' la risposta giusta
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "unready", "dettaglio": type(e).__name__}
     return {"status": "ready"}

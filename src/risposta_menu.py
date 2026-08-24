@@ -1,14 +1,14 @@
 from datetime import date
-from typing import Dict, List
 
 from pydantic import BaseModel
 
-from src.piatto import Piatto
 from src.enums import Giorni_settimana
+from src.piatto import Piatto
+
 
 class Pasti(BaseModel):
-    pranzo : List[Piatto] = []
-    cena : List[Piatto] = []
+    pranzo : list[Piatto] = []
+    cena : list[Piatto] = []
 
 class Pasti_settimana(BaseModel):
     lunedi: Pasti

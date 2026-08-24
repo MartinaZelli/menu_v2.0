@@ -1,5 +1,7 @@
 from pydantic import BaseModel
+
 from src.piatto import Piatto
+
 
 # Definiamo cosa riceve il server per ogni piatto manuale
 class PiattoManuale(BaseModel):

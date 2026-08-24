@@ -340,10 +340,20 @@ function apriEditor(giorno, momento) {
         return;
     }
 
-    // Usiamo l'ultimo menu visualizzato (che include i tuoi blocchi/modifiche)
+    // I pasti bloccati dopo l'ultima generazione vivono solo in pastiBloccati:
+    // renderTable() li disegna, ma non li scrive in ultimoMenuServer. Senza
+    // questa fusione l'utente bloccava un piatto, lo vedeva col lucchetto,
+    // salvava, e nel database finiva quello vecchio.
+    const tabella = JSON.parse(JSON.stringify(ultimoMenuServer));
+    for (const bloccato of pastiBloccati) {
+        if (tabella[bloccato.giorno]) {
+            tabella[bloccato.giorno][bloccato.momento] = [bloccato.piatto];
+        }
+    }
+
     const payload = {
         data_inizio_settimana: document.getElementById('data-inizio').value,
-        tabella: ultimoMenuServer
+        tabella: tabella
     };
 
     try {
@@ -393,36 +403,6 @@ function apriEditor(giorno, momento) {
             renderTable();
         }
 
-        async function accettaMenu() {
-    if (!ultimoMenuServer && pastiBloccati.length === 0) {
-        alert("Non c'è nessun menu da salvare!");
-        return;
-    }
-
-    // Costruiamo l'oggetto da inviare (formato Risposta)
-    const menuDaSalvare = {
-        data_inizio_settimana: document.getElementById('data-inizio').value,
-        tabella: ultimoMenuServer // Usiamo l'ultima tabella generata/modificata
-    };
-
-    try {
-        const res = await fetch('/menu/salva', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(menuDaSalvare)
-        });
-
-        if (res.ok) {
-            alert("Menu salvato correttamente nel database!");
-        } else {
-            const err = await res.json();
-            alert("Errore durante il salvataggio: " + err.detail);
-        }
-    } catch (e) {
-        alert("Impossibile connettersi al server.");
-    }
-
-}
     </script>
 </body>
 </html>

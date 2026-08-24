@@ -11,6 +11,13 @@
 -r requirements.txt
 
 pytest
+# ruff: linter e ordinatore di import. La configurazione sta in ruff.toml, con
+# target-version = py312 per corrispondere all'immagine e non alla macchina di
+# sviluppo. Girava finora solo come estensione dell'editor, quindi i controlli
+# dipendevano da chi la aveva installata.
+#   .venv/bin/ruff check .
+#   .venv/bin/ruff check --fix .
+ruff
 # httpx e' richiesto da fastapi.testclient.TestClient: e' il client HTTP che
 # esegue le richieste contro l'app in memoria, senza aprire una porta di rete.
 httpx
