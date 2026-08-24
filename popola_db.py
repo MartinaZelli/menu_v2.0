@@ -13,7 +13,14 @@ try:
     # Nei due laboratori il PYTHONPATH=/app e' proprio cio' che li fa
     # funzionare, dato che lo script viene eseguito da /app/popola_db/.
     from data_piatti import PIATTI_DATA
-    from src.config import CONFIG, DATABASE_URL, stampa_diagnostica, verifica_o_esci
+    from src.config import (
+        CONFIG,
+        DATABASE_URL,
+        leggi_bool,
+        leggi_int,
+        stampa_diagnostica,
+        verifica_o_esci,
+    )
     from src.database import Base, MacroDB, PastoSalvatoDB, PiattoDB
     from src.enums import Proteina
 except ImportError as e:
@@ -34,7 +41,7 @@ MACRO_DESIDERATE: list[dict[str, Any]] = [
 ]
 
 
-def attendi_database(engine: Engine, tentativi: int = 10, attesa: int = 5) -> bool:
+def attendi_database(engine: Engine, tentativi: int, attesa: int) -> bool:
     """Attende che il database accetti connessioni.
 
     Il nome conta: chiamandola test_* pytest la raccoglierebbe come test.
@@ -168,10 +175,31 @@ def sincronizza(
 def popola_db() -> None:
     stampa_diagnostica(CONFIG)
     verifica_o_esci(CONFIG)
+
+    # I tentativi erano 10 a 5 secondi, cioe' 50 secondi in tutto. Un MySQL al
+    # PRIMO avvio, quando deve ancora inizializzare il volume dei dati, impiega
+    # regolarmente piu' di due minuti: lo script si arrendeva prima che il
+    # database fosse pronto. Il default sale quindi a 30 tentativi (150s) e
+    # resta configurabile, perche' il tempo giusto dipende dall'ambiente.
+    tentativi = leggi_int("DB_RETRY_TENTATIVI", 30)
+    attesa = leggi_int("DB_RETRY_ATTESA", 5)
+
+    # Lo svuotamento dello storico e' il comportamento storico e resta il
+    # default. Non e' solo una comodita': PastoSalvatoDB.piatto_id e' una
+    # foreign key senza ON DELETE, quindi finche' esistono pasti salvati che
+    # referenziano un piatto, quel piatto non e' cancellabile. Disattivarlo
+    # significa accettare che i piatti tolti dal dataset ma gia' usati in un
+    # menu salvato non possano piu' essere rimossi.
+    svuota_storico = leggi_bool("POPOLA_DB_SVUOTA_STORICO", default=True)
+    if not svuota_storico:
+        print("[popola_db] POPOLA_DB_SVUOTA_STORICO=false: lo storico dei menu "
+              "viene conservato.")
+
     engine = create_engine(DATABASE_URL)
 
-    if not attendi_database(engine):
-        print("Errore critico: Impossibile connettersi al Database.")
+    if not attendi_database(engine, tentativi, attesa):
+        print(f"Errore critico: impossibile connettersi al database dopo "
+              f"{tentativi} tentativi ({tentativi * attesa} secondi).")
         sys.exit(1)
 
     Base.metadata.create_all(engine)
@@ -179,7 +207,7 @@ def popola_db() -> None:
     session = SessionLocale()
 
     try:
-        sincronizza(session, PIATTI_DATA, MACRO_DESIDERATE)
+        sincronizza(session, PIATTI_DATA, MACRO_DESIDERATE, svuota_storico)
         print("Sincronizzazione database completata.")
     except Exception as e:
         session.rollback()

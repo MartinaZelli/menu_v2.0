@@ -20,6 +20,7 @@ l'unica cosa che impedisce al difetto di rientrare.
 from typing import Any
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from data_piatti import PIATTI_DATA
@@ -158,3 +159,40 @@ def test_lo_storico_viene_svuotato_per_impostazione_predefinita(db: Session) -> 
     sincronizza(db, PIATTI_DATA, MACRO_DESIDERATE)
 
     assert db.query(PastoSalvatoDB).count() == 0
+
+
+def test_lo_storico_si_puo_conservare(db: Session) -> None:
+    """Con svuota_storico=False i menu salvati sopravvivono al popolamento."""
+    sincronizza(db, PIATTI_DATA, MACRO_DESIDERATE)
+    settimana = SettimanaDB(data_inizio=None)
+    db.add(settimana)
+    db.flush()
+    db.add(PastoSalvatoDB(settimana_id=settimana.id, giorno="lunedi",
+                          momento="pranzo", piatto_id=1))
+    db.commit()
+
+    sincronizza(db, PIATTI_DATA, MACRO_DESIDERATE, svuota_storico=False)
+
+    assert db.query(PastoSalvatoDB).count() == 1
+
+
+def test_conservare_lo_storico_impedisce_di_rimuovere_un_piatto_usato(db: Session) -> None:
+    """E' il prezzo da pagare per POPOLA_DB_SVUOTA_STORICO=false.
+
+    La foreign key su piatto_id non ha ON DELETE: finche' un menu salvato
+    referenzia un piatto, quel piatto non e' cancellabile. Con lo svuotamento
+    attivo il problema non si pone perche' i riferimenti spariscono prima.
+    """
+    sincronizza(db, PIATTI_DATA, MACRO_DESIDERATE)
+    piatto = db.query(PiattoDB).filter(PiattoDB.nome == "Insalata").one()
+    settimana = SettimanaDB(data_inizio=None)
+    db.add(settimana)
+    db.flush()
+    db.add(PastoSalvatoDB(settimana_id=settimana.id, giorno="lunedi",
+                          momento="pranzo", piatto_id=piatto.id))
+    db.commit()
+
+    ridotto = [p for p in _dataset() if p["nome"] != "Insalata"]
+    with pytest.raises(IntegrityError):
+        sincronizza(db, ridotto, MACRO_DESIDERATE, svuota_storico=False)
+    db.rollback()

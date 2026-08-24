@@ -86,6 +86,40 @@ def stampa_diagnostica(config: ConfigurazioneDB) -> None:
               f"si usano i default: {', '.join(config.mancanti)}")
 
 
+VERI = ("1", "true", "yes", "si", "sì")
+
+
+def leggi_bool(nome: str, default: bool) -> bool:
+    """Legge una variabile d'ambiente booleana.
+
+    Accetta le forme piu' comuni perche' chi scrive un .env o un manifest non
+    deve indovinare la sintassi: 1/true/yes/si valgono vero, tutto il resto
+    falso. Il confronto e' senza distinzione di maiuscole.
+    """
+    grezzo = os.environ.get(nome)
+    if grezzo is None:
+        return default
+    return grezzo.strip().lower() in VERI
+
+
+def leggi_int(nome: str, default: int) -> int:
+    """Legge una variabile d'ambiente intera, ignorando i valori non validi.
+
+    Un valore scritto male non deve impedire l'avvio: si segnala e si usa il
+    default. E' l'opposto della scelta fatta per le credenziali, dove un
+    fallback silenzioso e' pericoloso; qui il peggio che puo' capitare e'
+    aspettare per un tempo diverso da quello voluto.
+    """
+    grezzo = os.environ.get(nome)
+    if grezzo is None:
+        return default
+    try:
+        return int(grezzo)
+    except ValueError:
+        print(f"[config] {nome}={grezzo!r} non e' un intero, uso il default {default}")
+        return default
+
+
 def verifica_o_esci(config: ConfigurazioneDB) -> None:
     """Con DB_STRICT=true un fallback diventa un errore fatale.
 
@@ -96,7 +130,7 @@ def verifica_o_esci(config: ConfigurazioneDB) -> None:
     Il default e' false, cosi' nessuna variabile d'ambiente nuova diventa
     obbligatoria e i due laboratori continuano a funzionare invariati.
     """
-    if os.environ.get("DB_STRICT", "false").lower() not in ("1", "true", "yes"):
+    if not leggi_bool("DB_STRICT", default=False):
         return
     if config.mancanti:
         print(f"[config] DB_STRICT attivo e mancano: {', '.join(config.mancanti)}")
