@@ -9,7 +9,15 @@ class PiattoBase(BaseModel):
     """Campi comuni a un piatto, indipendenti dal fatto che esista gia'."""
 
     nome: str
-    descrizione: Optional[str] = None
+    # Il campo "descrizione" e' stato rimosso: era dichiarato qui ma la colonna
+    # corrispondente non esiste in PiattoDB, quindi l'API restituiva sempre
+    # null. Non e' stata aggiunta la colonna perche' Base.metadata.create_all()
+    # NON esegue ALTER TABLE: sulle tabelle gia' esistenti dei due laboratori
+    # (che hanno volumi persistenti) la colonna non comparirebbe, e ogni query
+    # fallirebbe con "Unknown column". L'app partirebbe comunque - l'engine e'
+    # lazy - lasciando un'applicazione morta con HAProxy verde, dato che
+    # controlla un file statico. Se un giorno servira' davvero, e' un
+    # intervento a se' con un passo di migrazione esplicito.
     proteina: Optional[Proteina] = None
     # stagione e tipologia sono Optional pur avendo un default.
     #
