@@ -1,9 +1,12 @@
-from typing import List
-from fastapi import APIRouter, HTTPException
-from src.database import SessionLocal, PiattoDB  
+from typing import Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from src.database import get_db, PiattoDB
 from src.risposta_menu import Risposta
 from src.richiesta_menu import Richiesta
-from src.piatto import Piatto 
+from src.piatto import Piatto
 import src.service
 
 router = APIRouter(
@@ -11,38 +14,35 @@ router = APIRouter(
     tags=["menu"]
 )
 
-@router.post("") 
-async def genera_menu(richiesta: Richiesta) -> Risposta: 
-    # La logica ora è interamente gestita dentro genera_menu_ordinato
-    # che apre e chiude la connessione al database autonomamente
-    risultato = src.service.genera_menu_ordinato(richiesta)
-    return risultato
+# Nota sulle firme: questi endpoint sono "def" e non "async def".
+# Le chiamate a SQLAlchemy sono I/O BLOCCANTE: dentro una funzione async
+# bloccherebbero l'event loop di uvicorn, e con esso ogni altra richiesta in
+# corso, compresi gli endpoint di health. FastAPI esegue automaticamente gli
+# endpoint dichiarati "def" in un threadpool separato, dove il blocco e'
+# innocuo. L'API esposta e' identica: cambia solo dove viene eseguito il codice.
+
+
+@router.post("")
+def genera_menu(richiesta: Richiesta, db: Session = Depends(get_db)) -> Risposta:
+    return src.service.genera_menu_ordinato(db, richiesta)
+
 
 @router.post("/salva")
-async def salva_menu(risposta: Risposta):
-    successo = src.service.salva_menu_settimanale(risposta)
+def salva_menu(risposta: Risposta, db: Session = Depends(get_db)) -> Dict[str, str]:
+    successo = src.service.salva_menu_settimanale(db, risposta)
     if not successo:
         raise HTTPException(status_code=500, detail="Errore nel salvataggio del menu")
     return {"status": "success", "message": "Menu salvato con successo"}
 
-# Endpoint per ottenere tutti i piatti
-@router.get("/elenco-piatti", response_model=List[Piatto])
-async def ottieni_piatti():
-    db = SessionLocal()
-    try:
-        piatti = db.query(PiattoDB).all()
-        return piatti
-    finally:
-        db.close()
 
-# Endpoint per aggiungere un nuovo piatto
+@router.get("/elenco-piatti", response_model=List[Piatto])
+def ottieni_piatti(db: Session = Depends(get_db)) -> List[PiattoDB]:
+    return db.query(PiattoDB).all()
+
+
 @router.post("/aggiungi-piatto")
-async def aggiungi_piatto(piatto: Piatto):
-    db = SessionLocal()
+def aggiungi_piatto(piatto: Piatto, db: Session = Depends(get_db)) -> Dict[str, str]:
     try:
-        # Stampiamo i dati in console per vedere se arrivano dal frontend
-        print(f"Ricevuto piatto: {piatto.nome}") 
-        
         nuovo = PiattoDB(
             nome=piatto.nome,
             proteina=piatto.proteina.value if hasattr(piatto.proteina, 'value') else piatto.proteina,
@@ -56,18 +56,12 @@ async def aggiungi_piatto(piatto: Piatto):
         return {"status": "success"}
     except Exception as e:
         db.rollback()
-        print(f"Errore aggiunta piatto: {e}") # Questo apparirà nel terminale di Uvicorn
+        print(f"Errore aggiunta piatto: {e}")  # sostituito da logging nella fase 3
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
 
-# Endpoint per eliminare un piatto
+
 @router.delete("/elimina-piatto/{id}")
-async def elimina_piatto(id: int):
-    db = SessionLocal()
-    try:
-        db.query(PiattoDB).filter(PiattoDB.id == id).delete()
-        db.commit()
-        return {"status": "deleted"}
-    finally:
-        db.close()
+def elimina_piatto(id: int, db: Session = Depends(get_db)) -> Dict[str, str]:
+    db.query(PiattoDB).filter(PiattoDB.id == id).delete()
+    db.commit()
+    return {"status": "deleted"}

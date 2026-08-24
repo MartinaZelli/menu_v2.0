@@ -1,7 +1,9 @@
 import os
+from typing import Iterator
+
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Date
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import Session, sessionmaker, relationship
 
 # --- CONFIGURAZIONE DINAMICA TRAMITE VARIABILI D'AMBIENTE ---
 # Se le variabili d'ambiente non sono presenti nel sistema (es. quando esegui in locale),
@@ -60,5 +62,28 @@ class PastoSalvatoDB(Base):
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def init_db():
+
+def get_db() -> Iterator[Session]:
+    """Fornisce una sessione del database agli endpoint FastAPI.
+
+    E' una "dependency": FastAPI la esegue prima di ogni richiesta, passa il
+    valore prodotto da yield all'endpoint, e alla fine della richiesta riprende
+    l'esecuzione da dopo lo yield per eseguire il finally.
+
+    Il vantaggio rispetto ad aprire SessionLocal() dentro ogni endpoint e' che
+    la chiusura e' garantita in un punto solo, e che nei test si puo'
+    sostituire l'intera funzione con app.dependency_overrides[get_db], senza
+    toccare ne' l'engine ne' i moduli.
+
+    Regola che ne consegue: chi apre chiude. Gli endpoint e i service ricevono
+    una sessione gia' aperta e NON devono chiamare db.close().
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def init_db() -> None:
     Base.metadata.create_all(bind=engine)
